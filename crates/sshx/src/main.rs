@@ -3,13 +3,22 @@ use std::process::ExitCode;
 use ansi_term::Color::{Cyan, Fixed, Green};
 use anyhow::Result;
 use clap::Parser;
-use sshx::{controller::Controller, runner::Runner, terminal::get_default_shell};
+use sshx::{controller::Controller, runner::Runner, service, terminal::get_default_shell};
 use tokio::signal;
 use tracing::error;
 
 /// A secure web-based, collaborative terminal.
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[clap(author, version, about = "
+SSHX Terminal Sharing
+
+Service Management:
+  --service install    Install and enable systemd service
+  --service uninstall  Remove systemd service
+  --service status     Check service status
+  --service start      Start service
+  --service stop       Stop service
+")]
 struct Args {
     /// Address of the remote sshx server.
     #[clap(long, default_value = "https://sshx.io", env = "SSHX_SERVER")]
@@ -39,6 +48,10 @@ struct Args {
     /// Optional encryption key.
     #[clap(long)]
     secret: Option<String>,
+
+    /// Service management (install|uninstall|status|start|stop)
+    #[clap(long, value_parser = ["install", "uninstall", "status", "start", "stop"])]
+    service: Option<String>,
 }
 
 fn print_greeting(shell: &str, controller: &Controller) {
@@ -81,6 +94,18 @@ fn print_greeting(shell: &str, controller: &Controller) {
 
 #[tokio::main]
 async fn start(args: Args) -> Result<()> {
+    // Handle service commands if present
+    if let Some(cmd) = args.service {
+        return match cmd.as_str() {
+            "install" => service::install(),
+            "uninstall" => service::uninstall(),
+            "status" => service::status(),
+            "start" => service::start(),
+            "stop" => service::stop(),
+            _ => Err(anyhow::anyhow!("Invalid service command"))
+        };
+    }
+
     let shell = match args.shell {
         Some(shell) => shell,
         None => get_default_shell().await,

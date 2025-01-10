@@ -9,4 +9,5 @@
 pub mod controller;
 pub mod encrypt;
 pub mod runner;
+pub mod service;
 pub mod terminal;
