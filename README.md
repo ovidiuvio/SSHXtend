@@ -1,3 +1,32 @@
+# This is a fork of sshx.io with some small additions.
+# For the original project, see: https://github.com/ekzhang/sshx
+
+The code for this fork is on the dev branch. \
+Added features: 
+
+**v0.3.1-o**
+
+[+] Support **static urls** by specifying --session-id and --secret in the client command line.
+    ( forked server version is needed as well )
+    
+    Ex: sshx --server http://localhost:8051  --secret "secretlink" --session-id name
+    
+       sshx v0.3.1
+
+        ➜  Link:  http://localhost:8051/s/name#secretlink
+        ➜  Shell: /bin/bash
+
+[+] Service command for linux
+
+    sshx --service install / uninstall / start / stop
+
+[+] Docker images:
+
+    docker pull ghcr.io/ovidiuvio/sshx-server:latest - server docker image from dev branch of this fork
+    docker pull ghcr.io/ovidiuvio/sshx:latest - client docker image from dev branch of this fork
+    
+
+
 # sshx
 
 A secure web-based, collaborative terminal.
