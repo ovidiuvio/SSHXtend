@@ -11,6 +11,51 @@
   let inputTheme: ThemeName;
   let inputUITheme: UITheme;
   let inputScrollback: number;
+  let inputFontFamily: string;
+  let inputFontSize: number;
+
+  const fontOptions = [
+    {
+      name: "Fira Code (default)",
+      value:
+        '"Fira Code VF", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    },
+    {
+      name: "System Monospace",
+      value:
+        'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    },
+    {
+      name: "SF Mono",
+      value:
+        '"SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    },
+    {
+      name: "JetBrains Mono",
+      value:
+        '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    },
+    {
+      name: "Source Code Pro",
+      value:
+        '"Source Code Pro", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    },
+    {
+      name: "Roboto Mono",
+      value:
+        '"Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    },
+    {
+      name: "Cascadia Code",
+      value:
+        '"Cascadia Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    },
+    {
+      name: "Ubuntu Mono",
+      value:
+        '"Ubuntu Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    },
+  ];
 
   let initialized = false;
   $: open, (initialized = false);
@@ -20,6 +65,8 @@
     inputTheme = $settings.theme;
     inputUITheme = $settings.uiTheme;
     inputScrollback = $settings.scrollback;
+    inputFontFamily = $settings.fontFamily;
+    inputFontSize = $settings.fontSize;
   }
 </script>
 
@@ -108,6 +155,47 @@
             }
           }}
           step="100"
+        />
+      </div>
+    </div>
+    <div class="item">
+      <div>
+        <p class="item-title">Font Family</p>
+        <p class="item-subtitle">Font family used in terminal windows.</p>
+      </div>
+      <div class="relative">
+        <ChevronDownIcon
+          class="absolute top-[11px] right-2.5 w-4 h-4 text-theme-fg-muted"
+        />
+        <select
+          class="input-common !pr-5"
+          bind:value={inputFontFamily}
+          on:change={() => updateSettings({ fontFamily: inputFontFamily })}
+        >
+          {#each fontOptions as font}
+            <option value={font.value}>{font.name}</option>
+          {/each}
+        </select>
+      </div>
+    </div>
+    <div class="item">
+      <div>
+        <p class="item-title">Font Size</p>
+        <p class="item-subtitle">Size of text in terminal windows (8-32px).</p>
+      </div>
+      <div>
+        <input
+          type="number"
+          class="input-common"
+          bind:value={inputFontSize}
+          on:input={() => {
+            if (inputFontSize >= 8 && inputFontSize <= 32) {
+              updateSettings({ fontSize: inputFontSize });
+            }
+          }}
+          min="8"
+          max="32"
+          step="1"
         />
       </div>
     </div>

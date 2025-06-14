@@ -38,6 +38,7 @@
   import { createEventDispatcher, onDestroy, onMount } from "svelte";
   import type { Terminal } from "sshx-xterm";
   import { Buffer } from "buffer";
+  import { DownloadIcon } from "svelte-feather-icons";
 
   import themes from "./themes";
   import CircleButton from "./CircleButton.svelte";
@@ -73,11 +74,86 @@
     // If the theme changes, update existing terminals' appearance.
     term.options.theme = theme;
     term.options.scrollback = $settings.scrollback;
+    term.options.fontFamily = $settings.fontFamily;
+    term.options.fontSize = $settings.fontSize;
   }
 
   let loaded = false;
   let focused = false;
   let currentTitle = "Remote Terminal";
+
+  function downloadTerminalText() {
+    if (!term) {
+      console.warn("Terminal not available for download");
+      return;
+    }
+
+    // Try the selection method first as it's more reliable
+    try {
+      term.selectAll();
+      const selectedContent = term.getSelection();
+      term.clearSelection();
+
+      if (selectedContent && selectedContent.trim()) {
+        downloadContent(selectedContent);
+        return;
+      }
+    } catch (e) {
+      console.warn("Selection method failed:", e);
+    }
+
+    // Fallback to buffer method
+    try {
+      const buffer = term.buffer.active;
+      const lines: string[] = [];
+
+      // Extract all lines from the terminal buffer
+      for (let i = 0; i < buffer.length; i++) {
+        const line = buffer.getLine(i);
+        if (line) {
+          const lineText = line.translateToString(true);
+          lines.push(lineText);
+        }
+      }
+
+      const content = lines.join("\n");
+
+      if (content.trim()) {
+        downloadContent(content);
+      } else {
+        // Try to get whatever is visible as fallback
+        const visibleContent =
+          term.getSelection() || "No terminal content available";
+        downloadContent(visibleContent);
+      }
+    } catch (e) {
+      console.error("Buffer method failed:", e);
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      downloadContent("Error extracting terminal content: " + errorMessage);
+    }
+  }
+
+  function downloadContent(content: string) {
+    try {
+      // Create and trigger download
+      const blob = new Blob([content], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `terminal-${currentTitle.replace(
+        /[^a-zA-Z0-9]/g,
+        "_",
+      )}-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Download failed:", e);
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      console.error("Download error details:", errorMessage);
+    }
+  }
 
   function handleWheelSkipXTerm(event: WheelEvent) {
     event.preventDefault(); // Stop native macOS Chrome zooming on pinch.
@@ -132,10 +208,8 @@
       allowTransparency: false,
       cursorBlink: false,
       cursorStyle: "block",
-      // This is the monospace font family configured in Tailwind.
-      fontFamily:
-        '"Fira Code VF", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-      fontSize: 14,
+      fontFamily: $settings.fontFamily,
+      fontSize: $settings.fontSize,
       fontWeight: 400,
       fontWeightBold: 500,
       lineHeight: 1.06,
@@ -250,7 +324,18 @@
     >
       {currentTitle}
     </div>
-    <div class="flex-1" />
+    <div class="flex-1 flex items-center justify-end px-3">
+      <button
+        class="w-4 h-4 p-0.5 rounded hover:bg-theme-bg-tertiary transition-colors"
+        title="Download terminal text"
+        on:mousedown={(event) => event.button === 0 && downloadTerminalText()}
+      >
+        <DownloadIcon
+          class="w-full h-full text-theme-fg-secondary"
+          strokeWidth={2}
+        />
+      </button>
+    </div>
   </div>
   <div
     class="inline-block px-4 py-2 transition-opacity duration-500"
