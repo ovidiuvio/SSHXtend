@@ -12,13 +12,54 @@
 @tailwind utilities;
 
 @layer base {
-  body {
+  :root {
+    /* Light theme colors */
+    --color-background: 255 255 255;
+    --color-background-secondary: 248 250 252;
+    --color-background-tertiary: 241 245 249;
+    --color-foreground: 15 23 42;
+    --color-foreground-secondary: 51 65 85;
+    --color-foreground-muted: 100 116 139;
+    --color-border: 226 232 240;
+    --color-border-secondary: 203 213 225;
+    --color-input: 248 250 252;
+    --color-accent: 79 70 229;
+    --color-accent-hover: 67 56 202;
+    --color-success: 34 197 94;
+    --color-warning: 245 158 11;
+    --color-error: 239 68 68;
+
+    color-scheme: light;
+  }
+
+  .dark {
+    /* Dark theme colors */
+    --color-background: 17 17 17;
+    --color-background-secondary: 24 24 27;
+    --color-background-tertiary: 39 39 42;
+    --color-foreground: 244 244 245;
+    --color-foreground-secondary: 212 212 216;
+    --color-foreground-muted: 161 161 170;
+    --color-border: 39 39 42;
+    --color-border-secondary: 63 63 70;
+    --color-input: 39 39 42;
+    --color-accent: 99 102 241;
+    --color-accent-hover: 79 70 229;
+    --color-success: 34 197 94;
+    --color-warning: 245 158 11;
+    --color-error: 239 68 68;
+
     color-scheme: dark;
+  }
+
+  body {
+    background-color: rgb(var(--color-background));
+    color: rgb(var(--color-foreground));
   }
 }
 
 @layer components {
   .panel {
-    @apply border border-zinc-800 bg-zinc-900/90 backdrop-blur-sm rounded-xl pointer-events-auto;
+    @apply border border-theme-border bg-theme-bg-secondary/90 backdrop-blur-sm rounded-xl pointer-events-auto;
   }
 }

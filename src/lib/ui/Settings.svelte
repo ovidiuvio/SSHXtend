@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ChevronDownIcon } from "svelte-feather-icons";
 
-  import { settings, updateSettings } from "$lib/settings";
+  import { settings, updateSettings, type UITheme } from "$lib/settings";
   import OverlayMenu from "./OverlayMenu.svelte";
   import themes, { type ThemeName } from "./themes";
 
@@ -9,6 +9,7 @@
 
   let inputName: string;
   let inputTheme: ThemeName;
+  let inputUITheme: UITheme;
   let inputScrollback: number;
 
   let initialized = false;
@@ -17,6 +18,7 @@
     initialized = true;
     inputName = $settings.name;
     inputTheme = $settings.theme;
+    inputUITheme = $settings.uiTheme;
     inputScrollback = $settings.scrollback;
   }
 </script>
@@ -50,12 +52,32 @@
     </div>
     <div class="item">
       <div>
+        <p class="item-title">Appearance</p>
+        <p class="item-subtitle">Overall theme for the interface.</p>
+      </div>
+      <div class="relative">
+        <ChevronDownIcon
+          class="absolute top-[11px] right-2.5 w-4 h-4 text-theme-fg-muted"
+        />
+        <select
+          class="input-common !pr-5"
+          bind:value={inputUITheme}
+          on:change={() => updateSettings({ uiTheme: inputUITheme })}
+        >
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          <option value="auto">Auto</option>
+        </select>
+      </div>
+    </div>
+    <div class="item">
+      <div>
         <p class="item-title">Color palette</p>
         <p class="item-subtitle">Color theme for text in terminals.</p>
       </div>
       <div class="relative">
         <ChevronDownIcon
-          class="absolute top-[11px] right-2.5 w-4 h-4 text-zinc-400"
+          class="absolute top-[11px] right-2.5 w-4 h-4 text-theme-fg-muted"
         />
         <select
           class="input-common !pr-5"
@@ -99,7 +121,7 @@
   </div>
 
   <!-- svelte-ignore missing-declaration -->
-  <p class="mt-6 text-sm text-right text-zinc-400">
+  <p class="mt-6 text-sm text-right text-theme-fg-muted">
     <a target="_blank" rel="noreferrer" href="https://github.com/ekzhang/sshx"
       >sshx-server v{__APP_VERSION__}</a
     >
@@ -108,7 +130,7 @@
 
 <style lang="postcss">
   .item {
-    @apply bg-zinc-800/25 rounded-lg p-4 flex gap-4 flex-col sm:flex-row items-start;
+    @apply bg-theme-bg-tertiary/25 rounded-lg p-4 flex gap-4 flex-col sm:flex-row items-start;
   }
 
   .item > div:first-child {
@@ -116,16 +138,16 @@
   }
 
   .item-title {
-    @apply font-medium text-zinc-200 mb-1;
+    @apply font-medium text-theme-fg mb-1;
   }
 
   .item-subtitle {
-    @apply text-sm text-zinc-400;
+    @apply text-sm text-theme-fg-muted;
   }
 
   .input-common {
-    @apply w-52 px-3 py-2 text-sm rounded-md bg-transparent hover:bg-white/5;
-    @apply border border-zinc-700 outline-none focus:ring-2 focus:ring-indigo-500/50;
+    @apply w-52 px-3 py-2 text-sm rounded-md bg-theme-input hover:bg-theme-bg-tertiary;
+    @apply border border-theme-border outline-none focus:ring-2 focus:ring-theme-accent/50;
     @apply appearance-none transition-colors;
   }
 </style>

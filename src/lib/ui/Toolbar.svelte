@@ -66,15 +66,15 @@
 
 <style lang="postcss">
   .v-divider {
-    @apply h-5 mx-2 border-l-4 border-zinc-800;
+    @apply h-5 mx-2 border-l-4 border-theme-border;
   }
 
   .icon-button {
-    @apply relative rounded-md p-1 hover:bg-zinc-700 active:bg-indigo-700 transition-colors;
+    @apply relative rounded-md p-1 hover:bg-theme-bg-tertiary active:bg-theme-accent transition-colors;
     @apply disabled:opacity-50 disabled:bg-transparent;
   }
 
   .activity {
-    @apply absolute top-1 right-0.5 text-xs p-[4.5px] bg-red-500 rounded-full;
+    @apply absolute top-1 right-0.5 text-xs p-[4.5px] bg-theme-error rounded-full;
   }
 </style>

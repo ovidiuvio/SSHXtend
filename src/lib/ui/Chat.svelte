@@ -60,14 +60,14 @@
     <CircleButtons>
       <CircleButton kind="red" on:click={() => dispatch("close")} />
     </CircleButtons>
-    <div class="ml-3 text-zinc-300 text-sm font-medium">Chat Messages</div>
+    <div class="ml-3 text-theme-fg text-sm font-medium">Chat Messages</div>
   </div>
 
   <div class="px-3 py-2 flex-1 overflow-y-auto" bind:this={scroller}>
     <div class="space-y-3">
       {#each groupedMessages as chatGroup}
         <div class="message-group" class:from-me={userId === chatGroup[0].uid}>
-          <aside class="pl-2.5 text-zinc-400 text-xs">
+          <aside class="pl-2.5 text-theme-fg-muted text-xs">
             {chatGroup[0].name}
           </aside>
           {#each chatGroup as chat (chat)}
@@ -85,7 +85,7 @@
 
   <form class="relative p-3" on:submit|preventDefault={handleSubmit}>
     <input
-      class="w-full rounded-2xl bg-zinc-800 pl-3.5 pr-9 py-1.5 outline-none text-zinc-300 focus:ring-2 focus:ring-indigo-500/50"
+      class="w-full rounded-2xl bg-theme-input pl-3.5 pr-9 py-1.5 outline-none text-theme-fg focus:ring-2 focus:ring-theme-accent/50"
       placeholder="Aa"
       bind:value={text}
     />
@@ -95,7 +95,7 @@
         transition:fly|local={{ x: 8 }}
       >
         <SendIcon
-          class="w-full h-full text-indigo-300 hover:text-white transition-colors"
+          class="w-full h-full text-theme-accent hover:text-theme-fg transition-colors"
         />
       </button>
     {/if}
@@ -116,12 +116,12 @@
   }
 
   .chat {
-    @apply px-2.5 py-1.5 text-sm rounded-2xl max-w-full break-words bg-zinc-800;
-    @apply hover:bg-zinc-700 transition-colors;
+    @apply px-2.5 py-1.5 text-sm rounded-2xl max-w-full break-words bg-theme-bg-tertiary;
+    @apply hover:bg-theme-bg-secondary transition-colors;
   }
 
   .message-group.from-me .chat {
-    @apply bg-indigo-700;
-    @apply hover:bg-indigo-600;
+    @apply bg-theme-accent;
+    @apply hover:bg-theme-accent-hover;
   }
 </style>

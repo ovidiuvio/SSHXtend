@@ -20,11 +20,11 @@
     if (latency === null) {
       return "";
     } else if (latency < 80) {
-      return "text-green-300";
+      return "text-theme-success";
     } else if (latency < 300) {
-      return "text-yellow-300";
+      return "text-theme-warning";
     } else {
-      return "text-red-300";
+      return "text-theme-error";
     }
   }
 </script>
@@ -36,12 +36,16 @@
 >
   <div class="absolute left-[calc(50%-8px)] top-[-16px] w-4 h-4">
     <svg viewBox="0 0 16 16">
-      <path d="M 0 12 L 8 0 L 16 12 Z" fill="#222" stroke="#333" />
+      <path
+        d="M 0 12 L 8 0 L 16 12 Z"
+        fill="rgb(var(--color-background-secondary))"
+        stroke="rgb(var(--color-border))"
+      />
     </svg>
   </div>
 
   <h2 class="font-medium mb-1 text-center">Network</h2>
-  <p class="text-zinc-400 text-sm text-center">
+  <p class="text-theme-fg-muted text-sm text-center">
     {#if status === "connected"}
       {#if serverLatency === null || shellLatency === null}
         Connected, estimating latency…
@@ -55,14 +59,14 @@
 
   <div class="flex justify-between items-center mt-6">
     <div class="ball filled" />
-    <div class="border-t-2 border-dashed border-zinc-600 w-32" />
+    <div class="border-t-2 border-dashed border-theme-border-secondary w-32" />
     <div class="ball" class:filled={status !== "no-server"} />
-    <div class="border-t-2 border-dashed border-zinc-600 w-32" />
+    <div class="border-t-2 border-dashed border-theme-border-secondary w-32" />
     <div class="ball" class:filled={status === "connected"} />
   </div>
 
   <div class="flex justify-between items-center mt-2.5">
-    <p class="text-xs text-zinc-300 w-8">You</p>
+    <p class="text-xs text-theme-fg-secondary w-8">You</p>
 
     {#if status === "connected"}
       <p class="text-xs w-14 text-left {colorLatency(serverLatency)}">
@@ -72,7 +76,7 @@
       </p>
     {/if}
 
-    <p class="text-xs text-zinc-300">Server</p>
+    <p class="text-xs text-theme-fg-secondary">Server</p>
 
     {#if status === "connected"}
       <p class="text-xs w-14 text-right {colorLatency(shellLatency)}">
@@ -82,7 +86,7 @@
       </p>
     {/if}
 
-    <p class="text-xs text-zinc-300 w-8 text-right">Shell</p>
+    <p class="text-xs text-theme-fg-secondary w-8 text-right">Shell</p>
   </div>
 </div>
 
@@ -92,10 +96,10 @@
   }
 
   .ball.filled {
-    @apply border border-zinc-300 bg-zinc-600;
+    @apply border border-theme-fg-secondary bg-theme-bg-tertiary;
   }
 
   .ball:not(.filled) {
-    @apply border-2 border-zinc-600;
+    @apply border-2 border-theme-border-secondary;
   }
 </style>

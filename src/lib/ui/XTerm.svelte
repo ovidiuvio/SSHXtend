@@ -246,7 +246,7 @@
       </CircleButtons>
     </div>
     <div
-      class="p-2 text-sm text-zinc-300 text-center font-medium overflow-hidden whitespace-nowrap text-ellipsis w-0 flex-grow-[4]"
+      class="p-2 text-sm text-theme-fg-secondary text-center font-medium overflow-hidden whitespace-nowrap text-ellipsis w-0 flex-grow-[4]"
     >
       {currentTitle}
     </div>
@@ -268,7 +268,7 @@
 
 <style lang="postcss">
   .term-container {
-    @apply inline-block rounded-lg border border-zinc-700 opacity-90;
+    @apply inline-block rounded-lg border border-theme-border opacity-90;
     transition: transform 200ms, opacity 200ms;
   }
 

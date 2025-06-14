@@ -45,7 +45,7 @@
 </script>
 
 <main
-  class="max-w-screen-xl mx-auto px-4 md:px-8 lg:px-16 text-zinc-100 overflow-x-hidden"
+  class="max-w-screen-xl mx-auto px-4 md:px-8 lg:px-16 text-theme-fg overflow-x-hidden"
 >
   <header class="mt-6 mb-4 sm:my-8 md:my-12">
     <img class="h-12 sm:h-16 -mx-1" src={logotypeDark} alt="sshx logo" />
@@ -74,7 +74,9 @@
     </div>
   </div>
 
-  <section class="my-12 space-y-6 sm:text-lg md:max-w-[460px] text-zinc-400">
+  <section
+    class="my-12 space-y-6 sm:text-lg md:max-w-[460px] text-theme-fg-muted"
+  >
     <p>
       <code class="name">sshx</code> lets you share your terminal with anyone by
       link, on a
@@ -93,7 +95,7 @@
 
   <div class="pb-12 md:pb-36">
     <button
-      class="bg-pink-700 hover:bg-pink-600 active:ring-4 active:ring-pink-500/50 text-lg font-medium px-8 py-2 rounded-full"
+      class="bg-theme-accent hover:bg-theme-accent-hover active:ring-4 active:ring-theme-accent/50 text-lg font-medium px-8 py-2 rounded-full text-white dark:text-white"
       on:click={scrollToInstallation}
     >
       Get Started
@@ -161,10 +163,13 @@
 
   <section class="installation-section">
     <h3 class="text-xl sm:text-lg">
-      <DownloadIcon size="20" class="text-zinc-400 inline-block mr-1 mb-0.5" />
+      <DownloadIcon
+        size="20"
+        class="text-theme-fg-muted inline-block mr-1 mb-0.5"
+      />
       macOS / Linux
     </h3>
-    <div class="text-sm text-zinc-400 md:text-base md:pt-0.5">
+    <div class="text-sm text-theme-fg-muted md:text-base md:pt-0.5">
       <p class="mb-3">Run the following in your terminal:</p>
       <CopyableCode value="curl -sSf https://sshx.io/get | sh" />
 
@@ -208,10 +213,13 @@
 
   <section class="installation-section">
     <h3 class="text-xl sm:text-lg">
-      <DownloadIcon size="20" class="text-zinc-400 inline-block mr-1 mb-0.5" />
+      <DownloadIcon
+        size="20"
+        class="text-theme-fg-muted inline-block mr-1 mb-0.5"
+      />
       Windows
     </h3>
-    <div class="text-sm text-zinc-400 md:text-base md:pt-0.5">
+    <div class="text-sm text-theme-fg-muted md:text-base md:pt-0.5">
       <p class="mb-3">Download the executable for your platform.</p>
 
       <div class="flex flex-wrap gap-2">
@@ -233,10 +241,13 @@
 
   <section class="installation-section">
     <h3 class="text-xl sm:text-lg">
-      <PackageIcon size="20" class="text-zinc-400 inline-block mr-1 mb-0.5" />
+      <PackageIcon
+        size="20"
+        class="text-theme-fg-muted inline-block mr-1 mb-0.5"
+      />
       Build from source
     </h3>
-    <div class="text-sm text-zinc-400 md:text-base md:pt-0.5">
+    <div class="text-sm text-theme-fg-muted md:text-base md:pt-0.5">
       <p class="mb-3">
         Ensure you have up-to-date versions of Rust and protoc. Compile sshx and
         add it to the system path.
@@ -247,10 +258,13 @@
 
   <section class="installation-section">
     <h3 class="text-xl sm:text-lg">
-      <GitBranchIcon size="20" class="text-zinc-400 inline-block mr-1 mb-0.5" />
+      <GitBranchIcon
+        size="20"
+        class="text-theme-fg-muted inline-block mr-1 mb-0.5"
+      />
       GitHub Actions
     </h3>
-    <div class="text-sm text-zinc-400 md:text-base md:pt-0.5">
+    <div class="text-sm text-theme-fg-muted md:text-base md:pt-0.5">
       <p class="mb-3">
         On GitHub Actions or other CI providers, run this command. It pauses
         your workflow and starts a collaborative session.
@@ -267,29 +281,29 @@
         target="_blank"
         rel="noreferrer"
         href={social.href}
-        class="border border-white/10 hover:border-white/30 transition-colors p-4 text-center text-lg font-medium rounded-lg"
+        class="border border-theme-border hover:border-theme-border-secondary transition-colors p-4 text-center text-lg font-medium rounded-lg"
       >
         {social.title}
       </a>
     {/each}
   </div>
 
-  <p class="mb-12 text-center text-zinc-400">
+  <p class="mb-12 text-center text-theme-fg-muted">
     open source, &copy; Eric Zhang 2023
   </p>
 </main>
 
 <style lang="postcss">
   b {
-    @apply text-zinc-300 font-medium;
+    @apply text-theme-fg-secondary font-medium;
   }
 
   code.name {
-    @apply text-[0.9em] text-zinc-100 border border-white/25 px-1 py-0.5 rounded;
+    @apply text-[0.9em] text-theme-fg border border-theme-border px-1 py-0.5 rounded;
   }
 
   hr {
-    @apply mx-auto md:w-1/2 border-zinc-800;
+    @apply mx-auto md:w-1/2 border-theme-border;
   }
 
   .title-gradient {
@@ -297,8 +311,7 @@
   }
 
   .feature-block {
-    @apply relative border rounded-lg border-transparent p-6 sm:p-8;
-    background: #111111 padding-box;
+    @apply relative border rounded-lg border-transparent p-6 sm:p-8 bg-theme-bg;
   }
 
   .feature-block::before {
@@ -328,15 +341,15 @@
   }
 
   .feature-block p {
-    @apply text-zinc-400;
+    @apply text-theme-fg-muted;
   }
 
   .feature-icon {
-    @apply inline-block p-3 rounded-full mb-3 shadow-md border border-zinc-600;
+    @apply inline-block p-3 rounded-full mb-3 shadow-md border border-theme-border-secondary;
   }
 
   .installation-section {
-    @apply grid sm:grid-cols-[200px,1fr] gap-x-10 gap-y-4 max-w-4xl mx-auto sm:border-t sm:border-white/10 sm:py-6 lg:px-2;
+    @apply grid sm:grid-cols-[200px,1fr] gap-x-10 gap-y-4 max-w-4xl mx-auto sm:border-t sm:border-theme-border sm:py-6 lg:px-2;
     @apply mb-16 lg:mb-8;
   }
 </style>
