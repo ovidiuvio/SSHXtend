@@ -10,6 +10,8 @@ export type Settings = {
   theme: ThemeName;
   uiTheme: UITheme;
   scrollback: number;
+  fontFamily: string;
+  fontSize: number;
 };
 
 const storedSettings = persisted<Partial<Settings>>("sshx-settings-store", {});
@@ -36,11 +38,24 @@ export const settings: Readable<Settings> = derived(
       scrollback = 5000;
     }
 
+    let fontFamily = $storedSettings.fontFamily;
+    if (typeof fontFamily !== "string" || fontFamily.trim() === "") {
+      fontFamily =
+        '"Fira Code VF", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+    }
+
+    let fontSize = $storedSettings.fontSize;
+    if (typeof fontSize !== "number" || fontSize < 8 || fontSize > 32) {
+      fontSize = 14;
+    }
+
     return {
       name,
       theme,
       uiTheme,
       scrollback,
+      fontFamily,
+      fontSize,
     };
   },
 );
