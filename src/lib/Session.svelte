@@ -453,21 +453,22 @@
     moves and zooms with the fabric of the canvas.
   -->
   <div
-    class="absolute inset-0 -z-10"
-    style:background-image="radial-gradient(#333 {zoom}px, transparent 0)"
+    class="absolute inset-0 -z-10 bg-theme-bg"
+    style:background-image="radial-gradient(rgb(var(--color-border)) {zoom}px,
+    transparent 0)"
     style:background-size="{24 * zoom}px {24 * zoom}px"
     style:background-position="{-zoom * center[0]}px {-zoom * center[1]}px"
   />
 
   <div class="py-2">
     {#if exitReason !== null}
-      <div class="text-red-400">{exitReason}</div>
+      <div class="text-theme-error">{exitReason}</div>
     {:else if connected}
       <div class="flex items-center">
-        <div class="text-green-400">You are connected!</div>
+        <div class="text-theme-success">You are connected!</div>
         {#if userId && hasWriteAccess === false}
           <div
-            class="bg-yellow-900 text-yellow-200 px-1 py-0.5 rounded ml-3 inline-flex items-center gap-1"
+            class="bg-theme-warning/20 text-theme-warning px-1 py-0.5 rounded ml-3 inline-flex items-center gap-1"
           >
             <EyeIcon size="14" />
             <span class="text-xs">Read-only</span>
@@ -475,7 +476,7 @@
         {/if}
       </div>
     {:else}
-      <div class="text-yellow-400">Connecting…</div>
+      <div class="text-theme-warning">Connecting…</div>
     {/if}
 
     <div class="mt-4">

@@ -21,7 +21,9 @@
 
 <Transition show={open}>
   <Dialog on:close class="fixed inset-0 z-50 grid place-items-center">
-    <DialogOverlay class="fixed -z-10 inset-0 bg-black/20 backdrop-blur-sm" />
+    <DialogOverlay
+      class="fixed -z-10 inset-0 bg-theme-bg/50 backdrop-blur-sm"
+    />
 
     <TransitionChild
       enter="duration-300 ease-out"
@@ -34,12 +36,12 @@
       style="max-width: {maxWidth}px"
     >
       <div
-        class="relative bg-[#111] sm:border border-zinc-800 px-6 py-10 sm:py-6
+        class="relative bg-theme-bg sm:border border-theme-border px-6 py-10 sm:py-6
          h-screen sm:h-auto max-h-screen sm:rounded-lg overflow-y-auto"
       >
         {#if showCloseButton}
           <button
-            class="absolute top-4 right-4 p-1 rounded hover:bg-zinc-700 active:bg-indigo-700 transition-colors"
+            class="absolute top-4 right-4 p-1 rounded hover:bg-theme-bg-tertiary active:bg-theme-accent transition-colors"
             aria-label="Close {title}"
             on:click={() => dispatch("close")}
           >
@@ -51,7 +53,7 @@
           <DialogTitle class="text-xl font-medium mb-2">
             {title}
           </DialogTitle>
-          <DialogDescription class="text-zinc-400">
+          <DialogDescription class="text-theme-fg-muted">
             {description}
           </DialogDescription>
         </div>

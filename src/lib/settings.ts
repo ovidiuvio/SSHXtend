@@ -1,10 +1,14 @@
 import { persisted } from "svelte-persisted-store";
 import themes, { type ThemeName, defaultTheme } from "./ui/themes";
-import { derived, type Readable } from "svelte/store";
+import { derived, type Readable, readable } from "svelte/store";
+import { browser } from "$app/environment";
+
+export type UITheme = "light" | "dark" | "auto";
 
 export type Settings = {
   name: string;
   theme: ThemeName;
+  uiTheme: UITheme;
   scrollback: number;
 };
 
@@ -22,6 +26,11 @@ export const settings: Readable<Settings> = derived(
       theme = defaultTheme;
     }
 
+    let uiTheme = $storedSettings.uiTheme;
+    if (!uiTheme || !["light", "dark", "auto"].includes(uiTheme)) {
+      uiTheme = "auto";
+    }
+
     let scrollback = $storedSettings.scrollback;
     if (typeof scrollback !== "number" || scrollback < 0) {
       scrollback = 5000;
@@ -30,6 +39,7 @@ export const settings: Readable<Settings> = derived(
     return {
       name,
       theme,
+      uiTheme,
       scrollback,
     };
   },
@@ -37,4 +47,43 @@ export const settings: Readable<Settings> = derived(
 
 export function updateSettings(values: Partial<Settings>) {
   storedSettings.update((settings) => ({ ...settings, ...values }));
+}
+
+/** A store that tracks the system's preferred color scheme */
+export const systemTheme = readable<"light" | "dark">(
+  "dark",
+  (set: (value: "light" | "dark") => void) => {
+    if (!browser) return;
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const updateTheme = () => set(mediaQuery.matches ? "dark" : "light");
+
+    updateTheme();
+    mediaQuery.addEventListener("change", updateTheme);
+
+    return () => mediaQuery.removeEventListener("change", updateTheme);
+  },
+);
+
+/** A derived store that resolves the actual UI theme based on user preference and system settings */
+export const actualUITheme = derived(
+  [settings, systemTheme],
+  ([$settings, $systemTheme]: [Settings, "light" | "dark"]) => {
+    if ($settings.uiTheme === "auto") {
+      return $systemTheme;
+    }
+    return $settings.uiTheme;
+  },
+);
+
+/** Apply the theme to the document */
+export function applyTheme(theme: "light" | "dark") {
+  if (!browser) return;
+
+  const html = document.documentElement;
+  if (theme === "dark") {
+    html.classList.add("dark");
+  } else {
+    html.classList.remove("dark");
+  }
 }
