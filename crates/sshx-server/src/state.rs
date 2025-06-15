@@ -39,21 +39,25 @@ pub struct ServerState {
 
     /// Storage and distributed communication provider, if enabled.
     mesh: Option<StorageMesh>,
+
+    /// Server options for configuration access.
+    options: ServerOptions,
 }
 
 impl ServerState {
     /// Create an empty server state using the given secret.
     pub fn new(options: ServerOptions) -> Result<Self> {
-        let secret = options.secret.unwrap_or_else(|| rand_alphanumeric(22));
-        let mesh = match options.redis_url {
-            Some(url) => Some(StorageMesh::new(&url, options.host.as_deref())?),
+        let secret = options.secret.clone().unwrap_or_else(|| rand_alphanumeric(22));
+        let mesh = match &options.redis_url {
+            Some(url) => Some(StorageMesh::new(url, options.host.as_deref())?),
             None => None,
         };
         Ok(Self {
             mac: Hmac::new_from_slice(secret.as_bytes()).unwrap(),
-            override_origin: options.override_origin,
+            override_origin: options.override_origin.clone(),
             store: DashMap::new(),
             mesh,
+            options,
         })
     }
 
@@ -65,6 +69,11 @@ impl ServerState {
     /// Returns the override origin for the Open() RPC.
     pub fn override_origin(&self) -> Option<String> {
         self.override_origin.clone()
+    }
+
+    /// Returns the server options for configuration access.
+    pub fn options(&self) -> &ServerOptions {
+        &self.options
     }
 
     /// Lookup a local session by name.
@@ -95,6 +104,11 @@ impl ServerState {
         } else {
             false
         }
+    }
+
+    /// Iterate over all local sessions.
+    pub fn iter_sessions(&self) -> impl Iterator<Item = (String, Arc<Session>)> + '_ {
+        self.store.iter().map(|entry| (entry.key().clone(), entry.value().clone()))
     }
 
     /// Close a session permanently on this and other servers.

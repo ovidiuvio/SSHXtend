@@ -3,9 +3,10 @@ use std::process::ExitCode;
 use ansi_term::Color::{Cyan, Fixed, Green};
 use anyhow::Result;
 use clap::Parser;
+use serde::Serialize;
 use sshx::{controller::Controller, runner::Runner, service, terminal::get_default_shell};
 use tokio::signal;
-use tracing::error;
+use tracing::{error, warn};
 
 /// A secure web-based, collaborative terminal.
 #[derive(Parser, Debug)]
@@ -13,11 +14,15 @@ use tracing::error;
 SSHX Terminal Sharing
 
 Service Management:
-  --service install    Install and enable systemd service
-  --service uninstall  Remove systemd service
+  --service install    Install and enable systemd service with current configuration
+  --service uninstall  Remove systemd service and binary
   --service status     Check service status
   --service start      Start service
   --service stop       Stop service
+
+Examples:
+  sshx --server https://your-server.com --dashboard --service install
+  sshx --shell /bin/bash --name server1 --service install
 ")]
 struct Args {
     /// Address of the remote sshx server.
@@ -52,6 +57,67 @@ struct Args {
     /// Service management (install|uninstall|status|start|stop)
     #[clap(long, value_parser = ["install", "uninstall", "status", "start", "stop"])]
     service: Option<String>,
+
+    /// Register this session with the web dashboard for monitoring.
+    #[clap(long)]
+    dashboard: bool,
+}
+
+/// Dashboard registration request payload
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RegisterDashboardRequest {
+    session_name: String,
+    url: String,
+    write_url: Option<String>,
+    display_name: String,
+}
+
+/// Extract relative URL from full URL (removes domain for reverse proxy compatibility)
+fn make_relative_url(full_url: &str) -> String {
+    if let Ok(url) = url::Url::parse(full_url) {
+        // Return path + query + fragment for reverse proxy compatibility
+        let mut relative = url.path().to_string();
+        if let Some(query) = url.query() {
+            relative.push('?');
+            relative.push_str(query);
+        }
+        if let Some(fragment) = url.fragment() {
+            relative.push('#');
+            relative.push_str(fragment);
+        }
+        relative
+    } else {
+        // If parsing fails, assume it's already relative
+        full_url.to_string()
+    }
+}
+
+/// Register session with the dashboard
+async fn register_with_dashboard(server_url: &str, controller: &Controller, display_name: &str) -> Result<()> {
+    let dashboard_url = format!("{}/api/dashboard/register", server_url);
+    
+    let request = RegisterDashboardRequest {
+        session_name: controller.name().to_string(),
+        url: make_relative_url(controller.url()),
+        write_url: controller.write_url().map(|u| make_relative_url(u)),
+        display_name: display_name.to_string(),
+    };
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(&dashboard_url)
+        .json(&request)
+        .send()
+        .await?;
+
+    if response.status().is_success() {
+        println!("✓ Session registered with dashboard");
+    } else {
+        warn!("Failed to register with dashboard: {}", response.status());
+    }
+
+    Ok(())
 }
 
 fn print_greeting(shell: &str, controller: &Controller) {
@@ -97,7 +163,16 @@ async fn start(args: Args) -> Result<()> {
     // Handle service commands if present
     if let Some(cmd) = args.service {
         return match cmd.as_str() {
-            "install" => service::install(),
+            "install" => {
+                // Use current arguments for service configuration
+                service::install_with_config(
+                    &args.server,
+                    args.dashboard,
+                    args.enable_readers,
+                    args.name.as_deref(),
+                    args.shell.as_deref(),
+                )
+            },
             "uninstall" => service::uninstall(),
             "status" => service::status(),
             "start" => service::start(),
@@ -132,6 +207,14 @@ async fn start(args: Args) -> Result<()> {
         args.secret,
     )
     .await?;
+
+    // Register with dashboard if requested
+    if args.dashboard {
+        if let Err(e) = register_with_dashboard(&args.server, &controller, &name).await {
+            warn!("Dashboard registration failed: {}", e);
+        }
+    }
+
     if args.quiet {
         if let Some(write_url) = controller.write_url() {
             println!("{}", write_url);

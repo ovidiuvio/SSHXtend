@@ -1909,12 +1909,15 @@ dependencies = [
  "encoding_rs",
  "nix",
  "pin-project",
+ "reqwest",
+ "serde",
  "sshx-core",
  "tokio",
  "tokio-stream",
  "tonic",
  "tracing",
  "tracing-subscriber",
+ "url",
  "whoami",
 ]
 
@@ -1947,6 +1950,7 @@ dependencies = [
  "futures-util",
  "hmac",
  "http",
+ "once_cell",
  "parking_lot",
  "prost",
  "rand",
