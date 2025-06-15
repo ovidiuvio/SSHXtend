@@ -58,14 +58,6 @@ Comprehensive settings panel with extensive customization options:
 **🔤 Typography & Display:**
 - 8 professional monospace fonts (Fira Code, JetBrains Mono, Source Code Pro, etc.)
 - Font size adjustment (8-32px)
-- Configurable scrollback buffer (terminal history lines)
-- Enhanced UI with modern design
-
-**⚙️ User Experience:**
-- Persistent settings via browser localStorage
-- Real-time updates across all terminals
-- Customizable display name for collaboration
-- Settings accessible via toolbar gear icon
 
 <img src="/static/images/sshx-settings.png" alt="Terminal Settings Panel" width="600">
 
@@ -74,10 +66,7 @@ Comprehensive settings panel with extensive customization options:
 ### 🖥️ **Enhanced Terminal Experience** 
 - **14 concurrent terminals** (WebGL context limit: ~16 max, 2 safety margin)
 - **Download terminal session logs** as text files with one-click export
-- **Multi-window interface** with tabbed terminal management
 - Customizable terminal fonts and display settings  
-- WebGL-accelerated rendering for smooth performance
-- Graceful error handling when terminal limits are reached
 
 <img src="/static/images/sshx-light.png" alt="Light Theme Terminal" width="800">
 
@@ -110,10 +99,10 @@ Additional Go-based client implementation in `sshx-go/` for platforms where the 
 Pre-built Docker images for instant deployment:
 ```bash
 # Server image
-docker pull ghcr.io/ovidiuvio/sshx-server:latest
+docker pull ghcr.io/ovidiuvio/sshxtend-server:latest
 
-# Client image  
-docker pull ghcr.io/ovidiuvio/sshx:latest
+# Client
+TODO
 ```
 
 ## 🚀 Quick Start
@@ -124,12 +113,11 @@ docker pull ghcr.io/ovidiuvio/sshx:latest
 
 1. **Start the server:**
 ```bash
-docker run -d -p 8051:8051 ghcr.io/ovidiuvio/sshx-server:latest
+docker run -d -p 8051:8051 ghcr.io/ovidiuvio/sshxtend-server:latest
 ```
 
 2. **Connect with the client:**
-```bash
-docker run -it ghcr.io/ovidiuvio/sshx:latest --server http://localhost:8051
+TODO
 ```
 
 3. **Access the dashboard:** Open `http://localhost:8051` in your browser
@@ -156,25 +144,7 @@ cargo install --path crates/sshx-server
 - Modified server endpoints and authentication
 - Extended feature set not present in original client
 
-## 🏗️ Core Features
-
-All the powerful features from the original sshx, plus our enhancements:
-
-- **🔐 End-to-end encryption** with Argon2 + AES
-- **🌐 Collaborative terminals** with real-time cursor sharing  
-- **📱 Responsive design** - resize, move, zoom on infinite canvas
-- **🔄 Auto-reconnection** with real-time latency estimates
-- **⚡ Predictive echo** for faster local editing (like Mosh)
-- **🌍 Global mesh network** for optimal performance
-
 ## 📖 Usage Examples
-
-### Basic Session
-```bash
-sshx
-# Creates a session with random URL
-# Access settings via gear icon to customize theme and appearance
-```
 
 ### Custom Session for Teams
 ```bash
@@ -216,38 +186,10 @@ sudo sshx --service install
 sudo systemctl enable sshx
 sudo systemctl start sshx
 ```
-
-### Docker Compose
-```yaml
-version: '3.8'
-services:
-  sshx-server:
-    image: ghcr.io/ovidiuvio/sshx-server:latest
-    ports:
-      - "8051:8051"
-    environment:
-      - REDIS_URL=redis://redis:6379
-      - SSHX_DASHBOARD_KEY=your-strong-dashboard-key
-    volumes:
-      - ./data:/data  # Optional: persist data
-  
-  redis:
-    image: redis:7-alpine
-    volumes:
-      - redis_data:/data
-      
-volumes:
-  redis_data:
-```
-
 ## 🎨 Visual Interface Features
-
-SSHXtend provides a modern, highly customizable interface designed for professional terminal collaboration:
 
 **🎭 Theme System:**
 - Seamless light/dark mode switching with system preference detection
-- 24 professionally crafted color palettes (VS Code, Dracula, Gruvbox, Solarized, etc.)
-- Real-time theme switching without session interruption
 
 **📊 Dashboard Interface:**
 - Clean, responsive design with real-time statistics cards
@@ -260,11 +202,6 @@ SSHXtend provides a modern, highly customizable interface designed for professio
 - Live preview of font and theme changes
 - Persistent configuration across browser sessions
 - Professional typography with 8 curated monospace fonts
-
-**📱 Responsive Design:**
-- Optimized for desktop collaboration and mobile monitoring
-- Scalable interface components that adapt to screen size
-- Touch-friendly controls for mobile dashboard access
 
 ## 🔧 Development
 
@@ -315,7 +252,6 @@ cargo fmt                     # Format code
 Pre-built images are available on GitHub Container Registry:
 
 - **Server**: `ghcr.io/ovidiuvio/sshx-server:latest`
-- **Client**: `ghcr.io/ovidiuvio/sshx:latest`
 
 These images are built from the `dev` branch and include all the extended features.
 
