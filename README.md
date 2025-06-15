@@ -11,7 +11,7 @@
 
 > 🤖 **Enhanced with Claude Sonnet**: All major features and improvements in this fork were developed collaboratively with Anthropic's Claude Sonnet AI assistant, demonstrating the power of AI-assisted software development.
 
-<img src="/static/images/social-image2.png" alt="SSHXtend Terminal" width="800">
+![SSHXtend Terminal](https://i.imgur.com/Q3qKAHW.png)
 
 ## ✨ What's New in SSHXtend
 
