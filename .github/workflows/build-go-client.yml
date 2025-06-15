@@ -2,8 +2,13 @@ name: Build and Release Go Client
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -50,17 +55,7 @@ jobs:
           - goos: linux
             goarch: s390x
             name: linux-s390x
-          - goos: linux
-            goarch: sparc64
-            name: linux-sparc64
           
-          # Windows MIPS (if supported)
-          - goos: windows
-            goarch: mips
-            name: windows-mips
-          - goos: windows
-            goarch: mipsle
-            name: windows-mipsle
 
     steps:
       - name: Checkout repository
