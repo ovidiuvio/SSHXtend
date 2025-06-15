@@ -270,10 +270,10 @@
       });
       return;
     }
-    if (shells.length >= 32) {
+    if (shells.length >= 14) {
       makeToast({
         kind: "error",
-        message: "You can only create up to 32 terminals.",
+        message: "You can only create up to 14 terminals.",
       });
       return;
     }

@@ -198,7 +198,7 @@
       await Promise.all([
         import("sshx-xterm"),
         import("xterm-addon-web-links"),
-        import("xterm-addon-webgl"),
+        import("xterm-addon-webgl"), // NOTE: WebGL contexts are limited by browsers (~16 max)
         import("xterm-addon-image"),
       ]);
 
@@ -238,6 +238,10 @@
     });
 
     term.loadAddon(new WebLinksAddon());
+    // WebGL addon provides GPU acceleration but browsers limit WebGL contexts
+    // to ~16 concurrent contexts. Beyond this limit, older contexts are destroyed,
+    // causing terminals to become unrenderable (upset emoticon).
+    // The 14-terminal limit in Session.svelte prevents this issue.
     term.loadAddon(new WebglAddon());
     term.loadAddon(new ImageAddon({ enableSizeReports: false }));
 
