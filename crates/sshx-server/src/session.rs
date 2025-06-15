@@ -295,6 +295,12 @@ impl Session {
             .collect()
     }
 
+    /// Get the number of active shells in the session.
+    pub fn shell_count(&self) -> usize {
+        let shells = self.shells.read();
+        shells.iter().filter(|(_, state)| !state.closed).count()
+    }
+
     /// Update a user in place by ID, applying a callback to the object.
     pub fn update_user(&self, id: Uid, f: impl FnOnce(&mut WsUser)) -> Result<()> {
         let updated_user = {

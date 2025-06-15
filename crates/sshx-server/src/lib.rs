@@ -44,6 +44,9 @@ pub struct ServerOptions {
 
     /// Hostname of this server, if running multiple servers.
     pub host: Option<String>,
+
+    /// Optional dashboard API key for protecting dashboard routes.
+    pub dashboard_key: Option<String>,
 }
 
 /// Stateful object that manages the sshx server, with graceful termination.
