@@ -98,7 +98,6 @@
       <div class="mb-6">
         <div class="flex items-center gap-3">
           <img src={logotypeDark} alt="sshx" class="h-7" />
-          <h1 class="text-xl font-bold text-theme-fg">Dashboard</h1>
         </div>
       </div>
 
