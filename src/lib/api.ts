@@ -19,6 +19,28 @@ export interface SessionInfo {
   dashboard?: DashboardMetadata;
 }
 
+export interface PaginationInfo {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface SessionListResponse {
+  sessions: SessionInfo[];
+  pagination: PaginationInfo;
+}
+
+export interface SessionListParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  sort?: string;
+  order?: 'asc' | 'desc';
+}
+
 /**
  * Get dashboard API headers with authentication if needed
  */
@@ -72,10 +94,20 @@ export async function checkDashboardAuth(): Promise<{required: boolean, valid: b
 }
 
 /**
- * Fetch all active sessions from the server
+ * Fetch sessions with pagination support
  */
-export async function fetchSessions(): Promise<SessionInfo[]> {
-  const response = await fetch('/api/sessions', {
+export async function fetchSessions(params: SessionListParams = {}): Promise<SessionListResponse> {
+  const searchParams = new URLSearchParams();
+  
+  if (params.page) searchParams.set('page', params.page.toString());
+  if (params.pageSize) searchParams.set('pageSize', params.pageSize.toString());
+  if (params.search) searchParams.set('search', params.search);
+  if (params.sort) searchParams.set('sort', params.sort);
+  if (params.order) searchParams.set('order', params.order);
+  
+  const url = `/api/sessions${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
+  
+  const response = await fetch(url, {
     headers: getDashboardHeaders(),
   });
   
@@ -86,6 +118,14 @@ export async function fetchSessions(): Promise<SessionInfo[]> {
     throw new Error(`Failed to fetch sessions: ${response.statusText}`);
   }
   return response.json();
+}
+
+/**
+ * Fetch all sessions (backwards compatibility)
+ */
+export async function fetchAllSessions(): Promise<SessionInfo[]> {
+  const response = await fetchSessions({ pageSize: 1000 }); // Large page size to get all
+  return response.sessions;
 }
 
 /**

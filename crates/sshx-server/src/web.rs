@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::routing::{any, get, get_service, post};
 use axum::{Json, Router};
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
 use tower_http::services::{ServeDir, ServeFile};
@@ -70,6 +70,60 @@ pub struct RegisterDashboardRequest {
     pub display_name: String,
 }
 
+/// Query parameters for session listing
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionListQuery {
+    /// Page number (1-based)
+    #[serde(default = "default_page")]
+    pub page: u32,
+    /// Number of items per page
+    #[serde(default = "default_page_size")]
+    pub page_size: u32,
+    /// Search query for filtering sessions
+    #[serde(default)]
+    pub search: Option<String>,
+    /// Sort field (name, lastAccessed, userCount, shellCount)
+    #[serde(default = "default_sort")]
+    pub sort: String,
+    /// Sort direction (asc, desc)
+    #[serde(default = "default_order")]
+    pub order: String,
+}
+
+fn default_page() -> u32 { 1 }
+fn default_page_size() -> u32 { 20 }
+fn default_sort() -> String { "lastAccessed".to_string() }
+fn default_order() -> String { "asc".to_string() }
+
+/// Paginated response for session listing
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionListResponse {
+    /// List of sessions for current page
+    pub sessions: Vec<SessionInfo>,
+    /// Pagination metadata
+    pub pagination: PaginationInfo,
+}
+
+/// Pagination metadata
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginationInfo {
+    /// Current page number (1-based)
+    pub page: u32,
+    /// Number of items per page
+    pub page_size: u32,
+    /// Total number of sessions
+    pub total: u32,
+    /// Total number of pages
+    pub total_pages: u32,
+    /// Whether there's a previous page
+    pub has_previous: bool,
+    /// Whether there's a next page
+    pub has_next: bool,
+}
+
 /// Handler for registering a session with the dashboard
 async fn register_dashboard(
     Json(request): Json<RegisterDashboardRequest>,
@@ -94,8 +148,9 @@ async fn register_dashboard(
 /// Handler for listing all dashboard-registered sessions
 async fn list_sessions(
     State(state): axum::extract::State<Arc<ServerState>>,
+    Query(query): Query<SessionListQuery>,
     headers: HeaderMap,
-) -> Result<Json<Vec<SessionInfo>>, StatusCode> {
+) -> Result<Json<SessionListResponse>, StatusCode> {
     // Check if dashboard key is configured
     if let Some(expected_key) = &state.options().dashboard_key {
         // Check for X-Dashboard-Key header
@@ -142,10 +197,78 @@ async fn list_sessions(
         }
     }
     
-    // Sort by most recently accessed
-    sessions.sort_by(|a, b| a.last_accessed.cmp(&b.last_accessed));
+    // Apply search filter
+    if let Some(search_query) = &query.search {
+        if !search_query.trim().is_empty() {
+            let search_lower = search_query.to_lowercase();
+            sessions.retain(|session| {
+                session.name.to_lowercase().contains(&search_lower) ||
+                session.dashboard.as_ref()
+                    .and_then(|d| Some(d.display_name.to_lowercase().contains(&search_lower)))
+                    .unwrap_or(false) ||
+                session.users.iter().any(|user| user.to_lowercase().contains(&search_lower))
+            });
+        }
+    }
     
-    Ok(Json(sessions))
+    // Apply sorting
+    match query.sort.as_str() {
+        "name" => {
+            if query.order == "desc" {
+                sessions.sort_by(|a, b| b.name.cmp(&a.name));
+            } else {
+                sessions.sort_by(|a, b| a.name.cmp(&b.name));
+            }
+        },
+        "userCount" => {
+            if query.order == "desc" {
+                sessions.sort_by(|a, b| b.user_count.cmp(&a.user_count));
+            } else {
+                sessions.sort_by(|a, b| a.user_count.cmp(&b.user_count));
+            }
+        },
+        "shellCount" => {
+            if query.order == "desc" {
+                sessions.sort_by(|a, b| b.shell_count.cmp(&a.shell_count));
+            } else {
+                sessions.sort_by(|a, b| a.shell_count.cmp(&b.shell_count));
+            }
+        },
+        "lastAccessed" | _ => {
+            if query.order == "desc" {
+                sessions.sort_by(|a, b| b.last_accessed.cmp(&a.last_accessed));
+            } else {
+                sessions.sort_by(|a, b| a.last_accessed.cmp(&b.last_accessed));
+            }
+        }
+    }
+    
+    let total = sessions.len() as u32;
+    let total_pages = ((total as f32) / (query.page_size as f32)).ceil() as u32;
+    let page = query.page.max(1).min(total_pages.max(1));
+    
+    // Apply pagination
+    let start_index = ((page - 1) * query.page_size) as usize;
+    
+    let paginated_sessions = if start_index < sessions.len() {
+        sessions.into_iter().skip(start_index).take(query.page_size as usize).collect()
+    } else {
+        Vec::new()
+    };
+    
+    let pagination = PaginationInfo {
+        page,
+        page_size: query.page_size,
+        total,
+        total_pages,
+        has_previous: page > 1,
+        has_next: page < total_pages,
+    };
+    
+    Ok(Json(SessionListResponse {
+        sessions: paginated_sessions,
+        pagination,
+    }))
 }
 
 /// Simple authentication handler for dashboard access
