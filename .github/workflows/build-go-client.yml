@@ -39,9 +39,6 @@ jobs:
           - goos: freebsd
             goarch: mips64
             name: freebsd-mips64
-          - goos: openbsd
-            goarch: mips64
-            name: openbsd-mips64
           
           # Additional cross-platform builds for completeness
           - goos: linux

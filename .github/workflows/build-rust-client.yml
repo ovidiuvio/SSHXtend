@@ -93,7 +93,7 @@ jobs:
         shell: cmd
 
       - name: Rename binary (Unix)
-        if: "!contains(matrix.target, 'windows')"
+        if: ${{ !contains(matrix.target, 'windows') }}
         run: |
           cd target/${{ matrix.target }}/release
           cp sshx sshxtend-${{ matrix.target }}
