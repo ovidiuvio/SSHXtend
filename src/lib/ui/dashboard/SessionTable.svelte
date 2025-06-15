@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { RefreshCwIcon, ExternalLinkIcon, LockIcon, TerminalIcon, UsersIcon, SearchIcon } from 'svelte-feather-icons';
-  import type { SessionInfo } from '$lib/api';
+  import type { SessionInfo, SessionListResponse, PaginationInfo } from '$lib/api';
   import { fetchSessions, formatLastAccessed } from '$lib/api';
   import SessionRow from './SessionRow.svelte';
+  import Pagination from './Pagination.svelte';
 
   export let sessions: SessionInfo[] = [];
   export let onSessionsLoaded: (sessions: SessionInfo[]) => void = () => {};
@@ -12,13 +13,24 @@
   let error = '';
   let refreshing = false;
   let searchQuery = '';
-  let filteredSessions: SessionInfo[] = [];
+  let currentPage = 1;
+  let pageSize = 20;
+  let pagination: PaginationInfo | null = null;
+  let searchTimeout: ReturnType<typeof setTimeout>;
 
   async function loadSessions() {
     try {
       loading = true;
       error = '';
-      sessions = await fetchSessions();
+      const response = await fetchSessions({
+        page: currentPage,
+        pageSize,
+        search: searchQuery || undefined,
+        sort: 'lastAccessed',
+        order: 'desc'
+      });
+      sessions = response.sessions;
+      pagination = response.pagination;
       onSessionsLoaded(sessions);
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load sessions';
@@ -33,7 +45,15 @@
     
     try {
       refreshing = true;
-      sessions = await fetchSessions();
+      const response = await fetchSessions({
+        page: currentPage,
+        pageSize,
+        search: searchQuery || undefined,
+        sort: 'lastAccessed',
+        order: 'desc'
+      });
+      sessions = response.sessions;
+      pagination = response.pagination;
       onSessionsLoaded(sessions);
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to refresh sessions';
@@ -41,6 +61,20 @@
     } finally {
       refreshing = false;
     }
+  }
+
+  function handlePageChange(page: number) {
+    currentPage = page;
+    loadSessions();
+  }
+
+  function handleSearchChange() {
+    // Debounce search to avoid too many API calls
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      currentPage = 1; // Reset to first page when searching
+      loadSessions();
+    }, 300);
   }
 
   onMount(() => {
@@ -51,18 +85,9 @@
     return () => clearInterval(interval);
   });
 
-  // Filter sessions based on search
-  $: {
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filteredSessions = sessions.filter(session =>
-        session.name.toLowerCase().includes(query) ||
-        session.dashboard?.displayName?.toLowerCase().includes(query) ||
-        session.users.some(user => user.toLowerCase().includes(query))
-      );
-    } else {
-      filteredSessions = sessions;
-    }
+  // Trigger search when searchQuery changes
+  $: if (searchQuery !== undefined) {
+    handleSearchChange();
   }
 </script>
 
@@ -116,9 +141,9 @@
           Try Again
         </button>
       </div>
-    {:else if filteredSessions.length === 0}
+    {:else if sessions.length === 0}
       <div class="text-center py-12">
-        {#if sessions.length === 0}
+        {#if pagination && pagination.total === 0}
           <TerminalIcon size="48" class="mx-auto text-theme-fg-muted mb-4" />
           <h3 class="text-lg font-medium text-theme-fg mb-2">No Active Sessions</h3>
           <p class="text-theme-fg-muted text-sm">
@@ -170,21 +195,17 @@
             </tr>
           </thead>
           <tbody class="bg-theme-bg-secondary divide-y divide-theme-border">
-            {#each filteredSessions as session (session.name)}
+            {#each sessions as session (session.name)}
               <SessionRow {session} />
             {/each}
           </tbody>
         </table>
       </div>
 
-      <!-- Pagination info -->
-      <div class="px-4 py-2 border-t border-theme-border bg-theme-bg">
-        <div class="flex items-center justify-between">
-          <div class="text-xs text-theme-fg-muted">
-            Showing {Math.min(filteredSessions.length, 1)}-{filteredSessions.length} of {filteredSessions.length} sessions
-          </div>
-        </div>
-      </div>
+      <!-- Pagination -->
+      {#if pagination}
+        <Pagination {pagination} onPageChange={handlePageChange} />
+      {/if}
     {/if}
   </div>
 </div>

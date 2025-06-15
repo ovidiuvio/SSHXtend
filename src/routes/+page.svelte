@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { SessionInfo } from '$lib/api';
-  import { fetchSessions, checkDashboardAuth } from '$lib/api';
+  import { fetchAllSessions, checkDashboardAuth } from '$lib/api';
   import DashboardHeader from '$lib/ui/dashboard/DashboardHeader.svelte';
   import SessionTable from '$lib/ui/dashboard/SessionTable.svelte';
   import AuthPrompt from '$lib/ui/dashboard/AuthPrompt.svelte';
@@ -57,8 +57,16 @@
     }
   }
 
-  function handleSessionsLoaded(loadedSessions: SessionInfo[]) {
-    sessions = loadedSessions;
+  async function handleSessionsLoaded(loadedSessions: SessionInfo[]) {
+    // For dashboard header stats, we need all sessions, not just the current page
+    try {
+      const allSessions = await fetchAllSessions();
+      sessions = allSessions;
+    } catch (error) {
+      console.error('Failed to load all sessions for stats:', error);
+      // Fallback to the loaded sessions from current page
+      sessions = loadedSessions;
+    }
   }
 
   onMount(() => {
