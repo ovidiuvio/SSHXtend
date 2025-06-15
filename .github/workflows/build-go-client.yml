@@ -2,8 +2,6 @@ name: Build and Release Go Client
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
   pull_request:
