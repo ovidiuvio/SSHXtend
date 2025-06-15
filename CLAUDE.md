@@ -91,3 +91,18 @@ npm run check
 - Terminal functionality uses a custom fork: `@ekzhang/sshx-xterm`
 - Build artifacts go to `target/` (Rust) and `build/` (SvelteKit)
 - Release builds use `scripts/release.sh` for multi-platform compilation
+
+### Terminal Limits
+
+The application is limited to **14 concurrent terminals** due to browser WebGL context limitations:
+
+- Each terminal uses xterm.js with WebGL addon for GPU-accelerated rendering
+- Browsers limit WebGL contexts to ~16 concurrent contexts
+- Beyond this limit, browsers destroy oldest contexts, causing terminals to become unrenderable
+- Users see an "upset emoticon" in affected terminals when this occurs
+- The 14-terminal limit (with 2-context safety margin) prevents this issue
+
+To support more terminals, you would need to:
+- Disable WebGL addon (reduces performance but removes limit)
+- Implement hybrid rendering (WebGL for active terminals, canvas for others)
+- Use context pooling/recycling for inactive terminals
