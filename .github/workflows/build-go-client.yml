@@ -95,22 +95,22 @@ jobs:
           fi
           go build -ldflags="-s -w" -o "${binary_name}" .
 
-      - name: Create archive
+      - name: Rename binary
         working-directory: ./sshx-go
         run: |
           binary_name="sshxtend-go"
+          target_name="sshxtend-go-${{ matrix.name }}"
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            binary_name="${binary_name}.exe"
-            zip "../sshxtend-go-${{ matrix.name }}.zip" "${binary_name}"
+            mv "${binary_name}.exe" "${target_name}.exe"
           else
-            tar -czf "../sshxtend-go-${{ matrix.name }}.tar.gz" "${binary_name}"
+            mv "${binary_name}" "${target_name}"
           fi
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sshxtend-go-${{ matrix.name }}
-          path: sshxtend-go-${{ matrix.name }}.*
+          path: sshx-go/sshxtend-go-${{ matrix.name }}*
 
   # Test builds for validation
   test-builds:

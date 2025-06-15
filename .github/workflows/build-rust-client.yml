@@ -24,32 +24,26 @@ jobs:
           # Windows x86-64
           - target: x86_64-pc-windows-msvc
             runner: windows-latest
-            archive: zip
             
           # Windows ARM64
           - target: aarch64-pc-windows-msvc
             runner: windows-latest
-            archive: zip
             
           # Linux AMD64
           - target: x86_64-unknown-linux-musl
             runner: ubuntu-latest
-            archive: tar.gz
             
           # Linux ARM64
           - target: aarch64-unknown-linux-musl
             runner: ubuntu-latest
-            archive: tar.gz
             
           # macOS ARM64 (Apple Silicon)
           - target: aarch64-apple-darwin
             runner: macos-latest
-            archive: tar.gz
             
           # macOS x86-64 (Intel)
           - target: x86_64-apple-darwin
             runner: macos-13
-            archive: tar.gz
 
     steps:
       - name: Checkout repository
@@ -93,24 +87,24 @@ jobs:
       - name: Build client
         run: cargo build --release --bin sshx --target ${{ matrix.target }}
 
-      - name: Create archive (Windows)
-        if: matrix.archive == 'zip'
+      - name: Rename binary (Windows)
+        if: contains(matrix.target, 'windows')
         run: |
           cd target/${{ matrix.target }}/release
-          7z a ../../../sshxtend-${{ matrix.target }}.zip sshx.exe
+          copy sshx.exe sshxtend-${{ matrix.target }}.exe
         shell: cmd
 
-      - name: Create archive (Unix)
-        if: matrix.archive == 'tar.gz'
+      - name: Rename binary (Unix)
+        if: "!contains(matrix.target, 'windows')"
         run: |
           cd target/${{ matrix.target }}/release
-          tar -czf ../../../sshxtend-${{ matrix.target }}.tar.gz sshx
+          cp sshx sshxtend-${{ matrix.target }}
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sshxtend-${{ matrix.target }}
-          path: sshxtend-${{ matrix.target }}.*
+          path: target/${{ matrix.target }}/release/sshxtend-${{ matrix.target }}*
 
   release:
     name: Create Release
