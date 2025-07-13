@@ -132,7 +132,11 @@
   onMount(async () => {
     // The page hash sets the end-to-end encryption key.
     const key = window.location.hash?.slice(1).split(",")[0] ?? "";
-    const writePassword = window.location.hash?.slice(1).split(",")[1] ?? null;
+    const writePassword = ((passwd) =>
+      // TODO: use more elegant solution
+      passwd === "manually" ? prompt("Write key here:") : passwd)(
+      window.location.hash?.slice(1).split(",")[1],
+    );
 
     encrypt = await Encrypt.new(key);
     const encryptedZeros = await encrypt.zeros();

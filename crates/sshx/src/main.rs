@@ -1,6 +1,6 @@
 use std::process::ExitCode;
 
-use ansi_term::Color::{Cyan, Fixed, Green};
+use ansi_term::Color::{Cyan, Fixed, Green, Red};
 use anyhow::Result;
 use clap::Parser;
 use serde::Serialize;
@@ -10,7 +10,10 @@ use tracing::{error, warn};
 
 /// A secure web-based, collaborative terminal.
 #[derive(Parser, Debug)]
-#[clap(author, version, about = "
+#[clap(
+    author,
+    version,
+    about = "
 SSHX Terminal Sharing
 
 Service Management:
@@ -23,7 +26,8 @@ Service Management:
 Examples:
   sshx --server https://your-server.com --dashboard --service install
   sshx --shell /bin/bash --name server1 --service install
-")]
+"
+)]
 struct Args {
     /// Address of the remote sshx server.
     #[clap(long, default_value = "https://sshx.io", env = "SSHX_SERVER")]
@@ -94,9 +98,13 @@ fn make_relative_url(full_url: &str) -> String {
 }
 
 /// Register session with the dashboard
-async fn register_with_dashboard(server_url: &str, controller: &Controller, display_name: &str) -> Result<()> {
+async fn register_with_dashboard(
+    server_url: &str,
+    controller: &Controller,
+    display_name: &str,
+) -> Result<()> {
     let dashboard_url = format!("{}/api/dashboard/register", server_url);
-    
+
     let request = RegisterDashboardRequest {
         session_name: controller.name().to_string(),
         url: make_relative_url(controller.url()),
@@ -105,11 +113,7 @@ async fn register_with_dashboard(server_url: &str, controller: &Controller, disp
     };
 
     let client = reqwest::Client::new();
-    let response = client
-        .post(&dashboard_url)
-        .json(&request)
-        .send()
-        .await?;
+    let response = client.post(&dashboard_url).json(&request).send().await?;
 
     if response.status().is_success() {
         println!("✓ Session registered with dashboard");
@@ -130,15 +134,20 @@ fn print_greeting(shell: &str, controller: &Controller) {
             r#"
   {sshx} {version}
 
-  {arr}  Read-only link: {link_v}
-  {arr}  Writable link:  {link_e}
-  {arr}  Shell:          {shell_v}
+  {arr}  Read-only link:  {link_v}
+  {arr}  Safe write link: {link_s}
+  {arr}  Writable link:   {link_e} ⚠️ INSECURE
+  {arr}  Shell:           {shell_v}
+
 "#,
             sshx = Green.bold().paint("sshx"),
             version = Green.paint(&version_str),
             arr = Green.paint("➜"),
             link_v = Cyan.underline().paint(controller.url()),
-            link_e = Cyan.underline().paint(write_url),
+            link_s = Cyan
+                .underline()
+                .paint(controller.url().to_owned() + ",manually"),
+            link_e = Red.underline().paint(write_url),
             shell_v = Fixed(8).paint(shell),
         );
     } else {
@@ -172,12 +181,12 @@ async fn start(args: Args) -> Result<()> {
                     args.name.as_deref(),
                     args.shell.as_deref(),
                 )
-            },
+            }
             "uninstall" => service::uninstall(),
             "status" => service::status(),
             "start" => service::start(),
             "stop" => service::stop(),
-            _ => Err(anyhow::anyhow!("Invalid service command"))
+            _ => Err(anyhow::anyhow!("Invalid service command")),
         };
     }
 
