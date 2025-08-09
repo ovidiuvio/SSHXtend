@@ -141,27 +141,6 @@
     </div>
     <div class="item">
       <div>
-        <p class="item-title">Scrollback</p>
-        <p class="item-subtitle">
-          Lines of previous text displayed in the terminal window.
-        </p>
-      </div>
-      <div>
-        <input
-          type="number"
-          class="input-common"
-          bind:value={inputScrollback}
-          on:input={() => {
-            if (inputScrollback >= 0) {
-              updateSettings({ scrollback: inputScrollback });
-            }
-          }}
-          step="100"
-        />
-      </div>
-    </div>
-    <div class="item">
-      <div>
         <p class="item-title">Font Family</p>
         <p class="item-subtitle">Font family used in terminal windows.</p>
       </div>
@@ -177,27 +156,6 @@
           {#each fontOptions as font}
             <option value={font.value}>{font.name}</option>
           {/each}
-        </select>
-      </div>
-    </div>
-    <div class="item">
-      <div>
-        <p class="item-title">Toolbar Position</p>
-        <p class="item-subtitle">Position of the toolbar on the screen.</p>
-      </div>
-      <div class="relative">
-        <ChevronDownIcon
-          class="absolute top-[11px] right-2.5 w-4 h-4 text-theme-fg-muted"
-        />
-        <select
-          class="input-common !pr-5"
-          bind:value={inputToolbarPosition}
-          on:change={() => updateSettings({ toolbarPosition: inputToolbarPosition })}
-        >
-          <option value="top">Top</option>
-          <option value="bottom">Bottom</option>
-          <option value="left">Left</option>
-          <option value="right">Right</option>
         </select>
       </div>
     </div>
@@ -220,6 +178,48 @@
           max="32"
           step="1"
         />
+      </div>
+    </div>
+    <div class="item">
+      <div>
+        <p class="item-title">Scrollback</p>
+        <p class="item-subtitle">
+          Lines of previous text displayed in the terminal window.
+        </p>
+      </div>
+      <div>
+        <input
+          type="number"
+          class="input-common"
+          bind:value={inputScrollback}
+          on:input={() => {
+            if (inputScrollback >= 0) {
+              updateSettings({ scrollback: inputScrollback });
+            }
+          }}
+          step="100"
+        />
+      </div>
+    </div>
+    <div class="item">
+      <div>
+        <p class="item-title">Toolbar Position</p>
+        <p class="item-subtitle">Position of the toolbar on the screen.</p>
+      </div>
+      <div class="relative">
+        <ChevronDownIcon
+          class="absolute top-[11px] right-2.5 w-4 h-4 text-theme-fg-muted"
+        />
+        <select
+          class="input-common !pr-5"
+          bind:value={inputToolbarPosition}
+          on:change={() => updateSettings({ toolbarPosition: inputToolbarPosition })}
+        >
+          <option value="top">Top</option>
+          <option value="bottom">Bottom</option>
+          <option value="left">Left</option>
+          <option value="right">Right</option>
+        </select>
       </div>
     </div>
     <!-- <div class="item">
