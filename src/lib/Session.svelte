@@ -27,7 +27,7 @@
   import { slide } from "./action/slide";
   import { TouchZoom, INITIAL_ZOOM } from "./action/touchZoom";
   import { arrangeNewTerminal } from "./arrange";
-  import { settings } from "./settings";
+  import { settings, type ToolbarPosition } from "./settings";
   import { EyeIcon } from "svelte-feather-icons";
 
   export let id: string;
@@ -65,6 +65,8 @@
   let toolbarPinned = false; // @hmr:keep
   let toolbarVisible = true;
   let toolbarHoverTimeout: number | null = null;
+  
+  $: toolbarPosition = $settings.toolbarPosition;
 
   onMount(() => {
     touchZoom = new TouchZoom(fabricEl);
@@ -428,9 +430,19 @@
   on:wheel={(event) => event.preventDefault()}
 >
   <div
-    class="absolute inset-x-0 flex justify-center z-10 transition-all duration-300 ease-in-out"
-    class:top-8={toolbarVisible}
-    class:top-0={!toolbarVisible}
+    class="absolute z-10 transition-all duration-300 ease-in-out flex"
+    class:inset-x-0={toolbarPosition === "top" || toolbarPosition === "bottom"}
+    class:inset-y-0={toolbarPosition === "left" || toolbarPosition === "right"}
+    class:justify-center={toolbarPosition === "top" || toolbarPosition === "bottom"}
+    class:items-center={toolbarPosition === "left" || toolbarPosition === "right"}
+    class:top-8={toolbarPosition === "top" && toolbarVisible}
+    class:top-0={toolbarPosition === "top" && !toolbarVisible}
+    class:bottom-8={toolbarPosition === "bottom" && toolbarVisible}
+    class:bottom-0={toolbarPosition === "bottom" && !toolbarVisible}
+    class:left-8={toolbarPosition === "left" && toolbarVisible}
+    class:left-0={toolbarPosition === "left" && !toolbarVisible}
+    class:right-8={toolbarPosition === "right" && toolbarVisible}
+    class:right-0={toolbarPosition === "right" && !toolbarVisible}
     class:opacity-100={toolbarVisible}
     class:opacity-0={!toolbarVisible}
     class:pointer-events-none={!toolbarVisible}
@@ -443,6 +455,7 @@
         {newMessages}
         {hasWriteAccess}
         pinned={toolbarPinned}
+        position={toolbarPosition}
         on:create={handleCreate}
         on:chat={() => {
           showChat = !showChat;
@@ -459,7 +472,15 @@
     </div>
 
     {#if showNetworkInfo}
-      <div class="absolute top-20 translate-x-[116.5px] pointer-events-auto">
+      <div 
+        class="absolute pointer-events-auto"
+        class:top-20={toolbarPosition === "top"}
+        class:bottom-20={toolbarPosition === "bottom"}
+        class:left-20={toolbarPosition === "left"}
+        class:right-20={toolbarPosition === "right"}
+        class:translate-x-[116.5px]={toolbarPosition === "top" || toolbarPosition === "bottom"}
+        class:translate-y-[116.5px]={toolbarPosition === "left" || toolbarPosition === "right"}
+      >
         <NetworkInfo
           status={connected
             ? "connected"
@@ -473,12 +494,29 @@
     {/if}
   </div>
 
-  <!-- Invisible hover zone at the top for showing the toolbar -->
+  <!-- Invisible hover zones for showing the toolbar based on position -->
   {#if !toolbarPinned && !toolbarVisible}
-    <div
-      class="absolute top-0 inset-x-0 h-8 z-10"
-      on:mouseenter={handleToolbarMouseEnter}
-    />
+    {#if toolbarPosition === "top"}
+      <div
+        class="absolute top-0 inset-x-0 h-8 z-10"
+        on:mouseenter={handleToolbarMouseEnter}
+      />
+    {:else if toolbarPosition === "bottom"}
+      <div
+        class="absolute bottom-0 inset-x-0 h-8 z-10"
+        on:mouseenter={handleToolbarMouseEnter}
+      />
+    {:else if toolbarPosition === "left"}
+      <div
+        class="absolute left-0 inset-y-0 w-8 z-10"
+        on:mouseenter={handleToolbarMouseEnter}
+      />
+    {:else if toolbarPosition === "right"}
+      <div
+        class="absolute right-0 inset-y-0 w-8 z-10"
+        on:mouseenter={handleToolbarMouseEnter}
+      />
+    {/if}
   {/if}
 
   {#if showChat}

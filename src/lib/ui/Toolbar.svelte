@@ -15,6 +15,7 @@
   export let hasWriteAccess: boolean | undefined;
   export let newMessages: boolean;
   export let pinned: boolean = false;
+  export let position: "top" | "bottom" | "left" | "right" = "top";
 
   const dispatch = createEventDispatcher<{
     create: void;
@@ -25,16 +26,42 @@
   }>();
 </script>
 
-<div class="panel inline-block px-3 py-2">
-  <div class="flex items-center select-none">
+<div 
+  class="panel inline-block"
+  class:px-3={position === "top" || position === "bottom"}
+  class:py-2={position === "top" || position === "bottom"}
+  class:py-3={position === "left" || position === "right"}
+  class:px-2={position === "left" || position === "right"}
+>
+  <div 
+    class="select-none"
+    class:flex={position === "top" || position === "bottom"}
+    class:flex-col={position === "left" || position === "right"}
+    class:items-center={true}
+  >
     <a href="/" class="flex-shrink-0"
       ><img src={logo} alt="sshx logo" class="h-10" /></a
     >
-    <p class="ml-1.5 mr-2 font-medium">sshx</p>
+    <p 
+      class="font-medium"
+      class:ml-1.5={position === "top" || position === "bottom"}
+      class:mr-2={position === "top" || position === "bottom"}
+      class:mt-1.5={position === "left" || position === "right"}
+      class:mb-2={position === "left" || position === "right"}
+    >sshx</p>
 
-    <div class="v-divider" />
+    <div 
+      class="divider"
+      class:v-divider={position === "top" || position === "bottom"}
+      class:h-divider={position === "left" || position === "right"}
+    />
 
-    <div class="flex space-x-1">
+    <div 
+      class="flex"
+      class:space-x-1={position === "top" || position === "bottom"}
+      class:flex-col={position === "left" || position === "right"}
+      class:space-y-1={position === "left" || position === "right"}
+    >
       <button
         class="icon-button"
         on:click={() => dispatch("create")}
@@ -58,9 +85,18 @@
       </button>
     </div>
 
-    <div class="v-divider" />
+    <div 
+      class="divider"
+      class:v-divider={position === "top" || position === "bottom"}
+      class:h-divider={position === "left" || position === "right"}
+    />
 
-    <div class="flex space-x-1">
+    <div 
+      class="flex"
+      class:space-x-1={position === "top" || position === "bottom"}
+      class:flex-col={position === "left" || position === "right"}
+      class:space-y-1={position === "left" || position === "right"}
+    >
       <button class="icon-button" on:click={() => dispatch("networkInfo")}>
         <WifiIcon strokeWidth={1.5} class="p-0.5" />
       </button>
@@ -82,6 +118,10 @@
 <style lang="postcss">
   .v-divider {
     @apply h-5 mx-2 border-l-4 border-theme-border;
+  }
+
+  .h-divider {
+    @apply w-5 my-2 border-t-4 border-theme-border;
   }
 
   .icon-button {

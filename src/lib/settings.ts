@@ -4,6 +4,7 @@ import { derived, type Readable, readable } from "svelte/store";
 import { browser } from "$app/environment";
 
 export type UITheme = "light" | "dark" | "auto";
+export type ToolbarPosition = "top" | "bottom" | "left" | "right";
 
 export type Settings = {
   name: string;
@@ -12,6 +13,7 @@ export type Settings = {
   scrollback: number;
   fontFamily: string;
   fontSize: number;
+  toolbarPosition: ToolbarPosition;
 };
 
 const storedSettings = persisted<Partial<Settings>>("sshx-settings-store", {});
@@ -49,6 +51,11 @@ export const settings: Readable<Settings> = derived(
       fontSize = 14;
     }
 
+    let toolbarPosition = $storedSettings.toolbarPosition;
+    if (!toolbarPosition || !["top", "bottom", "left", "right"].includes(toolbarPosition)) {
+      toolbarPosition = "top";
+    }
+
     return {
       name,
       theme,
@@ -56,6 +63,7 @@ export const settings: Readable<Settings> = derived(
       scrollback,
       fontFamily,
       fontSize,
+      toolbarPosition,
     };
   },
 );

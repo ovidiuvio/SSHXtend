@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ChevronDownIcon } from "svelte-feather-icons";
 
-  import { settings, updateSettings, type UITheme } from "$lib/settings";
+  import { settings, updateSettings, type UITheme, type ToolbarPosition } from "$lib/settings";
   import OverlayMenu from "./OverlayMenu.svelte";
   import themes, { type ThemeName } from "./themes";
 
@@ -13,6 +13,7 @@
   let inputScrollback: number;
   let inputFontFamily: string;
   let inputFontSize: number;
+  let inputToolbarPosition: ToolbarPosition;
 
   const fontOptions = [
     {
@@ -67,6 +68,7 @@
     inputScrollback = $settings.scrollback;
     inputFontFamily = $settings.fontFamily;
     inputFontSize = $settings.fontSize;
+    inputToolbarPosition = $settings.toolbarPosition;
   }
 </script>
 
@@ -175,6 +177,27 @@
           {#each fontOptions as font}
             <option value={font.value}>{font.name}</option>
           {/each}
+        </select>
+      </div>
+    </div>
+    <div class="item">
+      <div>
+        <p class="item-title">Toolbar Position</p>
+        <p class="item-subtitle">Position of the toolbar on the screen.</p>
+      </div>
+      <div class="relative">
+        <ChevronDownIcon
+          class="absolute top-[11px] right-2.5 w-4 h-4 text-theme-fg-muted"
+        />
+        <select
+          class="input-common !pr-5"
+          bind:value={inputToolbarPosition}
+          on:change={() => updateSettings({ toolbarPosition: inputToolbarPosition })}
+        >
+          <option value="top">Top</option>
+          <option value="bottom">Bottom</option>
+          <option value="left">Left</option>
+          <option value="right">Right</option>
         </select>
       </div>
     </div>
