@@ -62,6 +62,9 @@
   let showChat = false; // @hmr:keep
   let settingsOpen = false; // @hmr:keep
   let showNetworkInfo = false; // @hmr:keep
+  let toolbarPinned = false; // @hmr:keep
+  let toolbarVisible = true;
+  let toolbarHoverTimeout: number | null = null;
 
   onMount(() => {
     touchZoom = new TouchZoom(fabricEl);
@@ -388,6 +391,34 @@
   const setFocus = debounce((focused: number[]) => {
     srocket?.send({ setFocus: focused[0] ?? null });
   }, 20);
+
+  function handleToolbarMouseEnter() {
+    if (toolbarHoverTimeout) {
+      clearTimeout(toolbarHoverTimeout);
+      toolbarHoverTimeout = null;
+    }
+    toolbarVisible = true;
+  }
+
+  function handleToolbarMouseLeave() {
+    if (!toolbarPinned) {
+      toolbarHoverTimeout = window.setTimeout(() => {
+        toolbarVisible = false;
+        toolbarHoverTimeout = null;
+      }, 500);
+    }
+  }
+
+  function handleTogglePin() {
+    toolbarPinned = !toolbarPinned;
+    if (toolbarPinned) {
+      toolbarVisible = true;
+      if (toolbarHoverTimeout) {
+        clearTimeout(toolbarHoverTimeout);
+        toolbarHoverTimeout = null;
+      }
+    }
+  }
 </script>
 
 <!-- Wheel handler stops native macOS Chrome zooming on pinch. -->
@@ -397,27 +428,38 @@
   on:wheel={(event) => event.preventDefault()}
 >
   <div
-    class="absolute top-8 inset-x-0 flex justify-center pointer-events-none z-10"
+    class="absolute inset-x-0 flex justify-center z-10 transition-all duration-300 ease-in-out"
+    class:top-8={toolbarVisible}
+    class:top-0={!toolbarVisible}
+    class:opacity-100={toolbarVisible}
+    class:opacity-0={!toolbarVisible}
+    class:pointer-events-none={!toolbarVisible}
+    on:mouseenter={handleToolbarMouseEnter}
+    on:mouseleave={handleToolbarMouseLeave}
   >
-    <Toolbar
-      {connected}
-      {newMessages}
-      {hasWriteAccess}
-      on:create={handleCreate}
-      on:chat={() => {
-        showChat = !showChat;
-        newMessages = false;
-      }}
-      on:settings={() => {
-        settingsOpen = true;
-      }}
-      on:networkInfo={() => {
-        showNetworkInfo = !showNetworkInfo;
-      }}
-    />
+    <div class="pointer-events-auto">
+      <Toolbar
+        {connected}
+        {newMessages}
+        {hasWriteAccess}
+        pinned={toolbarPinned}
+        on:create={handleCreate}
+        on:chat={() => {
+          showChat = !showChat;
+          newMessages = false;
+        }}
+        on:settings={() => {
+          settingsOpen = true;
+        }}
+        on:networkInfo={() => {
+          showNetworkInfo = !showNetworkInfo;
+        }}
+        on:togglePin={handleTogglePin}
+      />
+    </div>
 
     {#if showNetworkInfo}
-      <div class="absolute top-20 translate-x-[116.5px]">
+      <div class="absolute top-20 translate-x-[116.5px] pointer-events-auto">
         <NetworkInfo
           status={connected
             ? "connected"
@@ -430,6 +472,14 @@
       </div>
     {/if}
   </div>
+
+  <!-- Invisible hover zone at the top for showing the toolbar -->
+  {#if !toolbarPinned && !toolbarVisible}
+    <div
+      class="absolute top-0 inset-x-0 h-8 z-10"
+      on:mouseenter={handleToolbarMouseEnter}
+    />
+  {/if}
 
   {#if showChat}
     <div

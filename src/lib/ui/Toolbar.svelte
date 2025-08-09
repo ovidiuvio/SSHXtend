@@ -5,6 +5,8 @@
     PlusCircleIcon,
     SettingsIcon,
     WifiIcon,
+    LockIcon,
+    UnlockIcon,
   } from "svelte-feather-icons";
 
   import logo from "$lib/assets/logo.svg";
@@ -12,12 +14,14 @@
   export let connected: boolean;
   export let hasWriteAccess: boolean | undefined;
   export let newMessages: boolean;
+  export let pinned: boolean = false;
 
   const dispatch = createEventDispatcher<{
     create: void;
     chat: void;
     settings: void;
     networkInfo: void;
+    togglePin: void;
   }>();
 </script>
 
@@ -59,6 +63,17 @@
     <div class="flex space-x-1">
       <button class="icon-button" on:click={() => dispatch("networkInfo")}>
         <WifiIcon strokeWidth={1.5} class="p-0.5" />
+      </button>
+      <button 
+        class="icon-button" 
+        on:click={() => dispatch("togglePin")}
+        title={pinned ? "Unpin toolbar" : "Pin toolbar"}
+      >
+        {#if pinned}
+          <LockIcon strokeWidth={1.5} class="p-0.5" />
+        {:else}
+          <UnlockIcon strokeWidth={1.5} class="p-0.5" />
+        {/if}
       </button>
     </div>
   </div>
