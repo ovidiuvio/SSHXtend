@@ -332,7 +332,12 @@
       <button
         class="w-4 h-4 p-0.5 rounded hover:bg-theme-bg-tertiary transition-colors"
         title="Download terminal text"
-        on:mousedown={(event) => event.button === 0 && downloadTerminalText()}
+        on:mousedown={(event) => {
+          if (event.button === 0) {
+            event.stopPropagation();
+            downloadTerminalText();
+          }
+        }}
       >
         <DownloadIcon
           class="w-full h-full text-theme-fg-secondary"
