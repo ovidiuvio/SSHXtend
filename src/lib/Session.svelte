@@ -27,7 +27,7 @@
   import { slide } from "./action/slide";
   import { TouchZoom, INITIAL_ZOOM } from "./action/touchZoom";
   import { arrangeNewTerminal } from "./arrange";
-  import { settings, type ToolbarPosition } from "./settings";
+  import { settings, type ToolbarPosition, updateSettings } from "./settings";
 
   export let id: string;
 
@@ -57,6 +57,7 @@
   let touchZoom: TouchZoom;
   let center = [0, 0];
   let zoom = INITIAL_ZOOM;
+  let initialZoomSet = false;
 
   let showChat = false; // @hmr:keep
   let settingsOpen = false; // @hmr:keep
@@ -78,9 +79,20 @@
 
   onMount(() => {
     touchZoom = new TouchZoom(fabricEl);
+    
+    // Load saved zoom level on mount
+    if (!initialZoomSet && $settings.zoomLevel) {
+      touchZoom.zoom = $settings.zoomLevel;
+      zoom = $settings.zoomLevel;
+      initialZoomSet = true;
+    }
+    
     touchZoom.onMove(() => {
       center = touchZoom.center;
       zoom = touchZoom.zoom;
+
+      // Save zoom level to settings with debounce
+      saveZoomLevel();
 
       // Blur if the user is currently focused on a terminal.
       //
@@ -96,6 +108,11 @@
       showNetworkInfo = false;
     });
   });
+
+  // Debounced save zoom level
+  const saveZoomLevel = debounce(() => {
+    updateSettings({ zoomLevel: zoom });
+  }, 500);
 
   /** Returns the mouse position in infinite grid coordinates, offset transformations and zoom. */
   function normalizePosition(event: MouseEvent): [number, number] {
@@ -429,6 +446,26 @@
       }
     }
   }
+
+  function handleZoomIn() {
+    const newZoom = Math.min(zoom * 1.2, 4);
+    touchZoom.zoom = newZoom;
+    zoom = newZoom;
+    updateSettings({ zoomLevel: newZoom });
+  }
+
+  function handleZoomOut() {
+    const newZoom = Math.max(zoom / 1.2, 0.25);
+    touchZoom.zoom = newZoom;
+    zoom = newZoom;
+    updateSettings({ zoomLevel: newZoom });
+  }
+
+  function handleZoomReset() {
+    touchZoom.zoom = 1;
+    zoom = 1;
+    updateSettings({ zoomLevel: 1 });
+  }
 </script>
 
 <!-- Wheel handler stops native macOS Chrome zooming on pinch. -->
@@ -465,6 +502,7 @@
         {hasWriteAccess}
         pinned={toolbarPinned}
         position={toolbarPosition}
+        zoomLevel={zoom}
         on:create={handleCreate}
         on:chat={() => {
           showChat = !showChat;
@@ -477,6 +515,9 @@
           showNetworkInfo = !showNetworkInfo;
         }}
         on:togglePin={handleTogglePin}
+        on:zoomIn={handleZoomIn}
+        on:zoomOut={handleZoomOut}
+        on:zoomReset={handleZoomReset}
       />
     </div>
 

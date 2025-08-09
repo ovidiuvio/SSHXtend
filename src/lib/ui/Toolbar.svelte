@@ -10,6 +10,8 @@
     LockIcon,
     UnlockIcon,
     EyeIcon,
+    ZoomInIcon,
+    ZoomOutIcon,
   } from "svelte-feather-icons";
 
   import logo from "$lib/assets/logo.svg";
@@ -20,6 +22,7 @@
   export let newMessages: boolean;
   export let pinned: boolean = false;
   export let position: "top" | "bottom" | "left" | "right" = "top";
+  export let zoomLevel: number = 1;
 
   const dispatch = createEventDispatcher<{
     create: void;
@@ -27,7 +30,12 @@
     settings: void;
     networkInfo: void;
     togglePin: void;
+    zoomIn: void;
+    zoomOut: void;
+    zoomReset: void;
   }>();
+
+  $: zoomPercent = Math.round(zoomLevel * 100);
 </script>
 
 <div 
@@ -86,6 +94,43 @@
       </button>
       <button class="icon-button" on:click={() => dispatch("settings")}>
         <SettingsIcon strokeWidth={1.5} class="p-0.5" />
+      </button>
+    </div>
+
+    <div 
+      class="divider"
+      class:v-divider={position === "top" || position === "bottom"}
+      class:h-divider={position === "left" || position === "right"}
+    />
+
+    <div 
+      class="flex"
+      class:space-x-1={position === "top" || position === "bottom"}
+      class:flex-col={position === "left" || position === "right"}
+      class:space-y-1={position === "left" || position === "right"}
+    >
+      <button 
+        class="icon-button"
+        on:click={() => dispatch("zoomOut")}
+        title="Zoom out"
+        disabled={zoomLevel <= 0.25}
+      >
+        <ZoomOutIcon strokeWidth={1.5} class="p-0.5" />
+      </button>
+      <button 
+        class="icon-button zoom-level"
+        on:click={() => dispatch("zoomReset")}
+        title="Reset zoom"
+      >
+        <span class="text-xs font-medium">{zoomPercent}%</span>
+      </button>
+      <button 
+        class="icon-button"
+        on:click={() => dispatch("zoomIn")}
+        title="Zoom in"
+        disabled={zoomLevel >= 4}
+      >
+        <ZoomInIcon strokeWidth={1.5} class="p-0.5" />
       </button>
     </div>
 
@@ -173,5 +218,9 @@
 
   .read-only-indicator {
     @apply text-theme-warning bg-yellow-500 bg-opacity-20;
+  }
+
+  .zoom-level {
+    @apply min-w-[3rem] px-1;
   }
 </style>

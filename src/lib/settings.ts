@@ -14,6 +14,7 @@ export type Settings = {
   fontFamily: string;
   fontSize: number;
   toolbarPosition: ToolbarPosition;
+  zoomLevel: number;
 };
 
 const storedSettings = persisted<Partial<Settings>>("sshx-settings-store", {});
@@ -56,6 +57,11 @@ export const settings: Readable<Settings> = derived(
       toolbarPosition = "top";
     }
 
+    let zoomLevel = $storedSettings.zoomLevel;
+    if (typeof zoomLevel !== "number" || zoomLevel < 0.25 || zoomLevel > 4) {
+      zoomLevel = 1;
+    }
+
     return {
       name,
       theme,
@@ -64,6 +70,7 @@ export const settings: Readable<Settings> = derived(
       fontFamily,
       fontSize,
       toolbarPosition,
+      zoomLevel,
     };
   },
 );
