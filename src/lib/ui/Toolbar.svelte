@@ -12,6 +12,7 @@
     EyeIcon,
     ZoomInIcon,
     ZoomOutIcon,
+    GridIcon,
   } from "svelte-feather-icons";
 
   import logo from "$lib/assets/logo.svg";
@@ -33,6 +34,7 @@
     zoomIn: void;
     zoomOut: void;
     zoomReset: void;
+    autoArrange: void;
   }>();
 
   $: zoomPercent = Math.round(zoomLevel * 100);
@@ -85,6 +87,14 @@
           : "Create new terminal"}
       >
         <PlusCircleIcon strokeWidth={1.5} class="p-0.5" />
+      </button>
+      <button
+        class="icon-button"
+        on:click={() => dispatch("autoArrange")}
+        disabled={!connected}
+        title="Auto-arrange terminals"
+      >
+        <GridIcon strokeWidth={1.5} class="p-0.5" />
       </button>
       <button class="icon-button" on:click={() => dispatch("chat")}>
         <MessageSquareIcon strokeWidth={1.5} class="p-0.5" />

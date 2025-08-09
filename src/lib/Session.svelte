@@ -26,7 +26,7 @@
   import LiveCursor from "./ui/LiveCursor.svelte";
   import { slide } from "./action/slide";
   import { TouchZoom, INITIAL_ZOOM } from "./action/touchZoom";
-  import { arrangeNewTerminal } from "./arrange";
+  import { arrangeNewTerminal, autoArrangeTerminals } from "./arrange";
   import { settings, type ToolbarPosition, updateSettings } from "./settings";
 
   export let id: string;
@@ -466,6 +466,52 @@
     zoom = 1;
     updateSettings({ zoomLevel: 1 });
   }
+
+  function handleAutoArrange() {
+    if (shells.length === 0) {
+      return;
+    }
+
+    // Prepare terminal data for auto-arrange with actual dimensions
+    const terminals = shells.map(([id, winsize]) => {
+      const wrapper = termWrappers[id];
+      return {
+        id,
+        x: winsize.x,
+        y: winsize.y,
+        rows: winsize.rows,
+        cols: winsize.cols,
+        width: wrapper ? wrapper.clientWidth : undefined,
+        height: wrapper ? wrapper.clientHeight : undefined,
+      };
+    });
+
+    // Calculate new positions
+    const newPositions = autoArrangeTerminals(terminals);
+
+    // Apply new positions to each terminal
+    newPositions.forEach((position, id) => {
+      const shell = shells.find(([shellId]) => shellId === id);
+      if (shell) {
+        const [shellId, winsize] = shell;
+        const newWinsize = { ...winsize, x: position.x, y: position.y };
+        srocket?.send({ move: [shellId, newWinsize] });
+      }
+    });
+
+    // Center view on the arranged terminals if positions changed
+    if (newPositions.size > 0) {
+      const positions = Array.from(newPositions.values());
+      const avgX = positions.reduce((sum, p) => sum + p.x, 0) / positions.length;
+      const avgY = positions.reduce((sum, p) => sum + p.y, 0) / positions.length;
+      
+      // Get average terminal dimensions for centering
+      const avgWidth = terminals.reduce((sum, t) => sum + (t.width || 752), 0) / terminals.length;
+      const avgHeight = terminals.reduce((sum, t) => sum + (t.height || 515), 0) / terminals.length;
+      
+      touchZoom.moveTo([avgX + avgWidth / 2, avgY + avgHeight / 2], 1);
+    }
+  }
 </script>
 
 <!-- Wheel handler stops native macOS Chrome zooming on pinch. -->
@@ -518,6 +564,7 @@
         on:zoomIn={handleZoomIn}
         on:zoomOut={handleZoomOut}
         on:zoomReset={handleZoomReset}
+        on:autoArrange={handleAutoArrange}
       />
     </div>
 
