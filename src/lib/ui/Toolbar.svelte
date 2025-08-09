@@ -5,13 +5,17 @@
     PlusCircleIcon,
     SettingsIcon,
     WifiIcon,
+    WifiOffIcon,
+    AlertCircleIcon,
     LockIcon,
     UnlockIcon,
+    EyeIcon,
   } from "svelte-feather-icons";
 
   import logo from "$lib/assets/logo.svg";
 
   export let connected: boolean;
+  export let exitReason: string | null = null;
   export let hasWriteAccess: boolean | undefined;
   export let newMessages: boolean;
   export let pinned: boolean = false;
@@ -97,9 +101,31 @@
       class:flex-col={position === "left" || position === "right"}
       class:space-y-1={position === "left" || position === "right"}
     >
-      <button class="icon-button" on:click={() => dispatch("networkInfo")}>
-        <WifiIcon strokeWidth={1.5} class="p-0.5" />
+      <button 
+        class="icon-button network-status"
+        class:connected={connected && !exitReason}
+        class:error={exitReason !== null}
+        class:connecting={!connected && !exitReason}
+        on:click={() => dispatch("networkInfo")}
+        title={exitReason ? "Connection error" : connected ? "Connected" : "Connecting..."}
+      >
+        {#if exitReason !== null}
+          <AlertCircleIcon strokeWidth={1.5} class="p-0.5" />
+        {:else if connected}
+          <WifiIcon strokeWidth={1.5} class="p-0.5" />
+        {:else}
+          <WifiOffIcon strokeWidth={1.5} class="p-0.5" />
+        {/if}
       </button>
+      {#if connected && hasWriteAccess === false}
+        <button 
+          class="icon-button read-only-indicator"
+          disabled
+          title="Read-only mode"
+        >
+          <EyeIcon strokeWidth={1.5} class="p-0.5" />
+        </button>
+      {/if}
       <button 
         class="icon-button" 
         on:click={() => dispatch("togglePin")}
@@ -131,5 +157,21 @@
 
   .activity {
     @apply absolute top-1 right-0.5 text-xs p-[4.5px] bg-theme-error rounded-full;
+  }
+
+  .network-status.connected {
+    @apply text-theme-success;
+  }
+
+  .network-status.error {
+    @apply text-theme-error bg-red-500 bg-opacity-20;
+  }
+
+  .network-status.connecting {
+    @apply text-theme-warning animate-pulse;
+  }
+
+  .read-only-indicator {
+    @apply text-theme-warning bg-yellow-500 bg-opacity-20;
   }
 </style>

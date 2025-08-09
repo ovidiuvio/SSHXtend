@@ -28,7 +28,6 @@
   import { TouchZoom, INITIAL_ZOOM } from "./action/touchZoom";
   import { arrangeNewTerminal } from "./arrange";
   import { settings, type ToolbarPosition } from "./settings";
-  import { EyeIcon } from "svelte-feather-icons";
 
   export let id: string;
 
@@ -67,6 +66,15 @@
   let toolbarHoverTimeout: number | null = null;
   
   $: toolbarPosition = $settings.toolbarPosition;
+  
+  // Force toolbar visible when connection issues
+  $: if (!connected || exitReason) {
+    toolbarVisible = true;
+    if (toolbarHoverTimeout) {
+      clearTimeout(toolbarHoverTimeout);
+      toolbarHoverTimeout = null;
+    }
+  }
 
   onMount(() => {
     touchZoom = new TouchZoom(fabricEl);
@@ -452,6 +460,7 @@
     <div class="pointer-events-auto">
       <Toolbar
         {connected}
+        {exitReason}
         {newMessages}
         {hasWriteAccess}
         pinned={toolbarPinned}
@@ -548,28 +557,9 @@
     style:background-position="{-zoom * center[0]}px {-zoom * center[1]}px"
   />
 
-  <div class="py-2">
-    {#if exitReason !== null}
-      <div class="text-theme-error">{exitReason}</div>
-    {:else if connected}
-      <div class="flex items-center">
-        <div class="text-theme-success">You are connected!</div>
-        {#if userId && hasWriteAccess === false}
-          <div
-            class="bg-theme-warning/20 text-theme-warning px-1 py-0.5 rounded ml-3 inline-flex items-center gap-1"
-          >
-            <EyeIcon size="14" />
-            <span class="text-xs">Read-only</span>
-          </div>
-        {/if}
-      </div>
-    {:else}
-      <div class="text-theme-warning">Connecting…</div>
-    {/if}
-
-    <div class="mt-4">
-      <NameList {users} />
-    </div>
+  <!-- User list -->
+  <div class="fixed top-4 left-4 z-10">
+    <NameList {users} />
   </div>
 
   <div class="absolute inset-0 overflow-hidden touch-none" bind:this={fabricEl}>
