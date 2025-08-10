@@ -1,6 +1,6 @@
 # SSHXtend 🚀
 
-[![Version](https://img.shields.io/badge/version-v0.3.1--extended-blue)](https://github.com/ovidiuvio/sshx)
+[![Version](https://img.shields.io/badge/version-v0.4.0--extended-blue)](https://github.com/ovidiuvio/sshx)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-available-brightgreen)](https://github.com/orgs/ovidiuvio/packages)
 [![Enhanced with Claude](https://img.shields.io/badge/Enhanced_with-Claude_Sonnet-ff6b35?logo=anthropic&logoColor=white)](https://claude.ai)
@@ -46,11 +46,51 @@ sshx-server
 
 *Real-time session monitoring with overview statistics, search functionality, and detailed session information*
 
+### 🤖 **AI-Powered Terminal Assistant** (NEW)
+Integrated AI assistant for intelligent terminal help and troubleshooting:
+
+**✨ AI Features:**
+- **Dual AI Provider Support**: Choose between Google Gemini or OpenRouter (supports 100+ models)
+- **Smart Context Management**: Automatically manages conversation context with token tracking
+- **Persistent Conversations**: Continue conversations across terminal sessions
+- **Intelligent Terminal Analysis**: Select any terminal output for instant AI analysis
+- **Natural Conversation Flow**: Maintains chronological context of all interactions
+
+**🎯 How It Works:**
+1. **Select text** in terminal → Click the sparkle button for instant AI help
+2. **Continue conversations**: Blue sparkle button resumes previous discussion
+3. **Start fresh**: Orange sparkle button begins new conversation
+4. **Keyboard shortcuts**: `Ctrl+Shift+A` (or `Cmd+Shift+A` on Mac) for quick access
+
+**⚙️ Configuration:**
+```javascript
+// In Settings panel, configure your AI provider:
+{
+  "aiProvider": "gemini",           // or "openrouter"
+  "geminiApiKey": "your-api-key",
+  "openRouterApiKey": "your-key",
+  "openRouterModel": "gpt-4",       // 100+ models available
+  "aiContextLength": 128000,        // Custom context window
+  "aiAutoCompress": true            // Auto-compress long conversations
+}
+```
+
+**💬 AI Mode Commands:**
+- `/exit` - Exit AI mode (conversation preserved)
+- `/new` - Start a fresh conversation
+- `Enter` with empty input - Quick exit
+
+**🔄 Context Management:**
+- Visual indicators show context usage percentage
+- Automatic compression when nearing token limits
+- Preserves all terminal selections and conversation history
+- Smart context ordering maintains natural conversation flow
+
 ### 🎨 **Advanced UI Settings & Customization**
 Comprehensive settings panel with extensive customization options:
 
 **🎨 Theme System:**
-- 24 built-in color themes with light/dark variants (VS Code, Dracula, Gruvbox, Solarized, etc.)
+- **30+ built-in color themes** with light/dark variants (VS Code, Dracula, Gruvbox, Solarized, Tokyo Night, Catppuccin, and more)
 - Auto UI theme detection (follows system light/dark preference)
 - Manual light/dark/auto UI theme switching
 - Real-time theme updates without terminal restart
@@ -58,6 +98,9 @@ Comprehensive settings panel with extensive customization options:
 **🔤 Typography & Display:**
 - 8 professional monospace fonts (Fira Code, JetBrains Mono, Source Code Pro, etc.)
 - Font size adjustment (8-32px)
+- **Font weight customization** for regular and bold text
+- **Zoom functionality** with `Ctrl+/Cmd+` plus/minus for quick size adjustments
+- Persistent font preferences across sessions
 
 <img src="/static/images/sshx-settings.png" alt="Terminal Settings Panel" width="600">
 
@@ -66,7 +109,12 @@ Comprehensive settings panel with extensive customization options:
 ### 🖥️ **Enhanced Terminal Experience** 
 - **14 concurrent terminals** (WebGL context limit: ~16 max, 2 safety margin)
 - **Download terminal session logs** as text files with one-click export
-- Customizable terminal fonts and display settings  
+- Customizable terminal fonts and display settings
+- **Copy-on-select**: Automatically copy selected text to clipboard
+- **Middle-click paste**: Quick paste functionality for Linux/Unix users
+- **Auto-arrange layout**: Organize multiple terminals with one click
+- **Smart toolbar positioning**: Top or bottom placement options
+- **Connection status indicators**: Visual feedback for terminal state  
 
 <img src="/static/images/sshx-light.png" alt="Light Theme Terminal" width="800">
 
@@ -122,6 +170,7 @@ TODO
 
 3. **Access the dashboard:** Open `http://localhost:8051` in your browser
 4. **Customize your experience:** Click the gear icon in the terminal toolbar to access settings
+5. **Enable AI assistant:** Add your API key in Settings and start using AI help with `Ctrl+Shift+A`
 
 ### Traditional Installation
 
@@ -145,6 +194,20 @@ cargo install --path crates/sshx-server
 - Extended feature set not present in original client
 
 ## 📖 Usage Examples
+
+### AI-Assisted Troubleshooting
+```bash
+# When you encounter an error:
+# 1. Select the error text in terminal
+# 2. Press Ctrl+Shift+A (or click sparkle button)
+# 3. AI analyzes and provides solutions
+
+# Continue conversation with more context:
+# 1. Run additional commands
+# 2. Select new output
+# 3. Click blue sparkle to add to existing conversation
+# 4. AI maintains full context of the debugging session
+```
 
 ### Custom Session for Teams
 ```bash
@@ -177,6 +240,21 @@ sshx --dashboard \
 # Combines static URLs + dashboard monitoring + security
 ```
 
+## ⌨️ Keyboard Shortcuts
+
+### Terminal Controls
+- **`Ctrl/Cmd + Plus (+)`**: Zoom in (increase font size)
+- **`Ctrl/Cmd + Minus (-)`**: Zoom out (decrease font size)
+- **`Ctrl/Cmd + 0`**: Reset zoom to default
+- **`Ctrl/Cmd + Shift + A`**: Activate AI assistant with selected text
+- **`Middle Click`**: Paste from clipboard (when enabled)
+
+### AI Mode Commands
+- **`Enter`** (empty input): Exit AI mode
+- **`/exit`**: Exit AI mode (conversation preserved)
+- **`/new`**: Start new conversation
+- **`Ctrl + C`**: Exit AI mode immediately
+
 ### Service Installation
 ```bash
 # Install as service
@@ -202,6 +280,10 @@ sudo systemctl start sshx
 - Live preview of font and theme changes
 - Persistent configuration across browser sessions
 - Professional typography with 8 curated monospace fonts
+- **AI configuration section** for API keys and model selection
+- **Terminal behavior settings**: Copy-on-select, middle-click paste
+- **Toolbar customization**: Position and layout preferences
+- **Advanced display options**: Font weights, zoom controls
 
 ## 🔧 Development
 
