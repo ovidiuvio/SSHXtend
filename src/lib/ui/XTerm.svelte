@@ -39,12 +39,17 @@
   import type { Terminal } from "sshx-xterm";
   import { Buffer } from "buffer";
   import { DownloadIcon } from "svelte-feather-icons";
+  import SparklesIcon from "./icons/SparklesIcon.svelte";
 
   import themes from "./themes";
   import CircleButton from "./CircleButton.svelte";
   import CircleButtons from "./CircleButtons.svelte";
   import { settings } from "$lib/settings";
   import { TypeAheadAddon } from "$lib/typeahead";
+  import { geminiService } from "$lib/gemini";
+  import { openRouterService } from "$lib/openrouter";
+  import { markdownToAnsi } from "$lib/markdownToAnsi";
+  import { contextManager } from "$lib/contextManager";
 
   /** Used to determine Cmd versus Ctrl keyboard shortcuts. */
   const isMac = browser && navigator.platform.startsWith("Mac");
@@ -93,6 +98,245 @@
   let loaded = false;
   let focused = false;
   let currentTitle = "Remote Terminal";
+  
+  // AI state for this terminal instance
+  interface AIState {
+    isProcessingAI: boolean;
+    conversationHistory: Array<{role: string, content: string}>;
+    selectedTextForAI: string;
+    aiCommandBuffer: string;
+    isInAIMode: boolean;
+  }
+  
+  let aiState: AIState = {
+    isProcessingAI: false,
+    conversationHistory: [],
+    selectedTextForAI: "",
+    aiCommandBuffer: "",
+    isInAIMode: false
+  };
+  
+  function formatMarkdownForTerminal(markdown: string, terminal: Terminal) {
+    try {
+      // Use our lightweight markdown to ANSI converter
+      const ansiFormatted = markdownToAnsi(markdown);
+      
+      // Split by lines and write to terminal with proper carriage returns
+      const lines = ansiFormatted.split('\n');
+      for (const line of lines) {
+        terminal.write(line + '\r\n');
+      }
+    } catch (error) {
+      // Fallback to raw output if parsing fails
+      console.error('Markdown parsing error:', error);
+      const lines = markdown.split('\n');
+      for (const line of lines) {
+        terminal.write(line + '\r\n');
+      }
+    }
+  }
+  
+  async function processAIQuery(query: string, initialContext: string = "", showQuery: boolean = true) {
+    if (!term || aiState.isProcessingAI) return;
+    
+    aiState.isProcessingAI = true;
+    
+    // Show the user's query as "committed" if not already shown
+    if (showQuery && query) {
+      term.write('\x1b[32m> \x1b[0m' + query + '\r\n');
+    }
+    
+    // Show loading indicator with icon on new line
+    term.write('\x1b[36m🔄  Thinking...\x1b[0m\r\n');
+    
+    try {
+      // Check if we need to compress the conversation before adding more
+      const contextStatus = contextManager.getContextStatus(aiState.conversationHistory);
+      
+      if (contextStatus.shouldCompress && $settings.aiAutoCompress) {
+        // Show compression notification
+        term.write('\x1b[33m📦 Compressing conversation history to fit context window...\x1b[0m\r\n');
+        
+        // Compress the conversation
+        aiState.conversationHistory = await contextManager.checkAndCompress(aiState.conversationHistory);
+        
+        // Clear and redraw the compression message
+        term.write('\x1b[1A\x1b[2K'); // Move up and clear line
+        term.write('\x1b[32m✅ Conversation compressed\x1b[0m\r\n');
+        
+        // Small delay for user to see the message
+        await new Promise(resolve => setTimeout(resolve, 500));
+        term.write('\x1b[1A\x1b[2K'); // Clear the success message too
+      }
+      // Build the full context including conversation history
+      let fullContext = "";
+      
+      // Always include the initial terminal context if we have it
+      // Store it in the first conversation entry
+      if (aiState.conversationHistory.length === 0 && initialContext) {
+        // Store the initial context as a system message
+        aiState.conversationHistory.push({
+          role: 'Context',
+          content: initialContext
+        });
+      } else if (aiState.conversationHistory.length === 0 && !initialContext) {
+        // No context provided and no history, get terminal buffer
+        const buffer = term.buffer.active;
+        const lines = [];
+        const startLine = Math.max(0, buffer.cursorY - 50);
+        for (let i = startLine; i <= buffer.cursorY; i++) {
+          const line = buffer.getLine(i);
+          if (line) {
+            lines.push(line.translateToString(true));
+          }
+        }
+        if (lines.join('\n').trim()) {
+          aiState.conversationHistory.push({
+            role: 'Context',
+            content: lines.join('\n')
+          });
+        }
+      }
+      
+      // Build full context from conversation history
+      if (aiState.conversationHistory.length > 0) {
+        // Find the initial context (first Context entry)
+        const contextEntry = aiState.conversationHistory.find(msg => msg.role === 'Context');
+        if (contextEntry) {
+          fullContext = `Terminal context:\n${contextEntry.content}\n\n`;
+        }
+        
+        // Add conversation history (excluding Context entries)
+        const conversation = aiState.conversationHistory.filter(msg => msg.role !== 'Context');
+        if (conversation.length > 0) {
+          fullContext += "Previous conversation:\n";
+          conversation.forEach(msg => {
+            fullContext += `${msg.role}: ${msg.content}\n\n`;
+          });
+        }
+      }
+      
+      // Add current query
+      fullContext += `Current question: ${query}`;
+      
+      // Create system prompt for terminal context
+      const systemPrompt = `You are an AI assistant integrated directly into a terminal emulator. The user is viewing your response inline with their terminal session.
+
+FORMATTING GUIDELINES:
+1. Use Unicode icons liberally to enhance readability:
+   - ✅ for success/correct  
+   - ❌ for errors/incorrect
+   - ⚠️ for warnings
+   - 💡 for tips/suggestions
+   - 📁 for directories
+   - 📄 for files
+   - 🔧 for configuration/settings
+   - 🚀 for performance/speed
+   - 🔒 for security/permissions
+   - 📦 for packages/dependencies
+   - 🐛 for bugs/debugging
+   - ⚡ for quick tips
+   - 📝 for notes/documentation
+   - 🎯 for goals/targets
+   - ⭐ for important points
+
+2. Response length should match the complexity of the question:
+   - Simple questions: 2-5 lines
+   - Error explanations: Include full solution steps
+   - Concept explanations: Provide sufficient detail for understanding
+   - Scripts/code: Include complete, working examples
+   - Don't artificially limit responses if more information is genuinely helpful
+
+3. Terminal-optimized formatting:
+   - Keep lines under 80-120 characters for readability
+   - Use backticks for \`inline code\` and code blocks
+   - Number multi-step instructions (1. 2. 3.)
+   - Use bullet points with • or - for lists
+   - Add blank lines sparingly for visual separation
+
+4. Content priorities:
+   - Lead with the direct answer or solution
+   - Show exact commands to run
+   - Explain errors with actionable fixes
+   - Include examples when helpful
+   - Add context only when it aids understanding
+
+5. Be conversational but efficient:
+   - Use icons to reduce text verbosity
+   - Group related information visually
+   - Highlight important warnings with ⚠️
+   - Mark successful outcomes with ✅
+
+Conversation context and question:
+${fullContext}`;
+      
+      // Log the AI API call
+      console.log('🤖 AI API Call:', {
+        provider: $settings.aiProvider,
+        currentQuery: query,
+        conversationHistory: aiState.conversationHistory,
+        historyLength: aiState.conversationHistory.length,
+        fullContextLength: fullContext.length,
+        fullPrompt: systemPrompt,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Query the selected AI provider with system context
+      const response = $settings.aiProvider === 'openrouter' 
+        ? await openRouterService.queryOpenRouter(systemPrompt)
+        : await geminiService.queryGemini(systemPrompt);
+      
+      // Log the AI response
+      console.log('✅ AI Response:', {
+        responseLength: response.length,
+        responsePreview: response.substring(0, 200) + (response.length > 200 ? '...' : ''),
+        timestamp: new Date().toISOString()
+      });
+      
+      // Clear the loading message (only the loading line, keep the query visible)
+      term.write('\x1b[1A\x1b[2K'); // Move up one line and clear it
+      
+      // Display the response with formatting
+      term.write('\x1b[32m━━━ 🤖 AI ━━━\x1b[0m\r\n');
+      
+      // Format and display the response with improved markdown handling
+      formatMarkdownForTerminal(response, term);
+      
+      term.write('\x1b[32m━━━━━━━━━━━━━\x1b[0m\r\n');
+      
+      // Add BOTH question and response to conversation history
+      // Only add if not already in history (to avoid duplicates)
+      const lastUserMsg = aiState.conversationHistory[aiState.conversationHistory.length - 2];
+      const lastAssistantMsg = aiState.conversationHistory[aiState.conversationHistory.length - 1];
+      
+      if (!lastUserMsg || lastUserMsg.content !== query || lastUserMsg.role !== 'User') {
+        aiState.conversationHistory.push({role: 'User', content: query});
+        aiState.conversationHistory.push({role: 'Assistant', content: response});
+      }
+      
+      // Show context usage status
+      const finalContextStatus = contextManager.getContextStatus(aiState.conversationHistory);
+      const usageColor = finalContextStatus.percentageUsed > 80 ? '\x1b[33m' : '\x1b[36m';
+      term.write(`${usageColor}📊  Context: ${Math.round(finalContextStatus.percentageUsed)}% used (${finalContextStatus.currentTokens}/${finalContextStatus.maxTokens} tokens)\x1b[0m\r\n`);
+      
+      // Show hint about AI mode
+      term.write('\x1b[90m(Type your follow-up question, press Enter to exit, or type /exit)\x1b[0m\r\n');
+      
+    } catch (error) {
+      // Clear the loading message (only the loading line, keep the query visible)
+      term.write('\x1b[1A\x1b[2K'); // Move up one line and clear it
+      
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      term.write('\x1b[31m❌ AI Error: ' + errorMessage + '\x1b[0m\r\n');
+      
+      if (errorMessage.includes('API key')) {
+        const providerName = $settings.aiProvider === 'openrouter' ? 'OpenRouter' : 'Gemini';
+        term.write(`\x1b[33m🔑 Please configure your ${providerName} API key in Settings ⚙️\x1b[0m\r\n`);
+      }
+    } finally {
+      aiState.isProcessingAI = false;
+    }
+  }
 
   function downloadTerminalText() {
     if (!term) {
@@ -203,7 +447,21 @@
     }
   };
 
-  $: term?.resize(cols, rows);
+  $: if (term) {
+    term.resize(cols, rows);
+    // If we're in AI mode, restore the AI prompt after resize
+    if (aiState.isInAIMode) {
+      // Use a small delay to let the resize complete
+      setTimeout(() => {
+        if (term && aiState.isInAIMode) {
+          // Clear any shell prompt that might have appeared
+          term.write('\r\x1b[K'); // Move to start of line and clear it
+          // Restore AI prompt with current buffer
+          term.write('\x1b[36m✨  \x1b[0m' + aiState.aiCommandBuffer);
+        }
+      }, 10);
+    }
+  }
 
   onMount(async () => {
     const [{ Terminal }, { WebLinksAddon }, { WebglAddon }, { ImageAddon }] =
@@ -231,6 +489,43 @@
 
     // Keyboard shortcuts for natural text editing.
     term.attachCustomKeyEventHandler((event) => {
+      // Ctrl+Shift+A or Cmd+Shift+A for AI query
+      if (
+        ((isMac && event.metaKey) || (!isMac && event.ctrlKey)) &&
+        event.shiftKey && 
+        event.key === 'A' &&
+        !event.altKey &&
+        term
+      ) {
+        event.preventDefault();
+        const selection = term.getSelection();
+        if (selection) {
+          // Enter AI mode with selected text
+          aiState.isInAIMode = true;
+          aiState.conversationHistory = [];
+          
+          // Move to new line if needed
+          const buffer = term.buffer.active;
+          if (buffer.cursorX > 0) {
+            term.write('\r\n');
+          }
+          
+          term.write('\x1b[32m━━━ Entering AI Mode ━━━\x1b[0m\r\n');
+          term.write('\x1b[90m(Press Enter with empty input or type /exit to exit)\x1b[0m\r\n\r\n');
+          
+          // Let the AI intelligently respond based on the context
+          const contextPrompt = `Analyze the following terminal output and provide the most helpful response. If it's an error, explain how to fix it. If it's command output, explain what it means. If it's code, explain what it does. Be helpful and contextual.`;
+          
+          processAIQuery(contextPrompt, selection, false).then(() => {
+            if (term) term.write('\x1b[36m✨  \x1b[0m');
+          });
+        } else {
+          // No selection, show help
+          term.write('\r\n\x1b[33m⚠️ Select text first, then press Ctrl+Shift+A (or Cmd+Shift+A) to ask AI\x1b[0m\r\n');
+        }
+        return false;
+      }
+      
       if (
         (isMac && event.metaKey && !event.ctrlKey && !event.altKey) ||
         (!isMac && !event.metaKey && event.ctrlKey && !event.altKey)
@@ -293,7 +588,70 @@
     term.loadAddon(typeahead);
 
     const utf8 = new TextEncoder();
-    term.onData((data: string) => {
+    
+    term.onData(async (data: string) => {
+      // If we're in AI mode, handle everything as AI input
+      if (aiState.isInAIMode) {
+        if (data === '\r' || data === '\n') {
+          const query = aiState.aiCommandBuffer.trim();
+          
+          // Check for exit conditions
+          if (query === '' || query === '/exit') {
+            // Clear the input line if we typed /exit
+            if (query === '/exit') {
+              const clearLength = aiState.aiCommandBuffer.length;
+              let clearSequence = '';
+              for (let i = 0; i < clearLength; i++) {
+                clearSequence += '\b \b';
+              }
+              if (term) term.write(clearSequence);
+            }
+            
+            // Exit AI mode and return to shell
+            if (term) {
+              term.write('\r\n');
+              term.write('\x1b[90mExiting AI mode...\x1b[0m\r\n');
+            }
+            aiState.isInAIMode = false;
+            aiState.aiCommandBuffer = "";
+            aiState.conversationHistory = []; // Clear entire conversation including context
+            // Send a single Enter to restore shell prompt
+            dispatch("data", utf8.encode('\r'));
+          } else {
+            // Move to new line, showing the user's input as "committed"
+            term.write('\r\n');
+            
+            // Reset buffer immediately so it doesn't appear duplicated
+            aiState.aiCommandBuffer = "";
+            
+            // Process the query - don't show query again since user already saw it
+            await processAIQuery(query, "", false);
+            
+            // Show AI prompt with sparkle and space after response
+            if (term) term.write('\x1b[36m✨  \x1b[0m');
+          }
+        } else if (data === '\x7f') { // Backspace
+          if (aiState.aiCommandBuffer.length > 0) {
+            aiState.aiCommandBuffer = aiState.aiCommandBuffer.slice(0, -1);
+            if (term) term.write('\b \b');
+          }
+        } else if (data === '\x03') { // Ctrl+C - exit AI mode
+          if (term) {
+            term.write('\r\n');
+            term.write('\x1b[90mExiting AI mode...\x1b[0m\r\n');
+          }
+          aiState.isInAIMode = false;
+          aiState.aiCommandBuffer = "";
+          aiState.conversationHistory = []; // Clear conversation history
+          // Don't send anything - user will get prompt when they type
+        } else if (data.charCodeAt(0) >= 32) { // Printable characters
+          aiState.aiCommandBuffer += data;
+          if (term) term.write(data);
+        }
+        return; // Don't process further in AI mode
+      }
+      
+      // Normal mode - just pass everything through to shell
       dispatch("data", utf8.encode(data));
     });
     term.onBinary((data: string) => {
@@ -302,7 +660,15 @@
 
     // Add copy-on-select functionality
     let selectionTimer: number | null = null;
-    term.onSelectionChange(() => {
+    
+    if (term) {
+      term.onSelectionChange(() => {
+        const selection = term?.getSelection();
+        
+        // Track selected text for AI sparkles button
+        aiState.selectedTextForAI = selection || "";
+      
+      // Handle copy-on-select
       if (!$settings.copyOnSelect) return;
       
       // Clear any existing timer
@@ -312,13 +678,13 @@
       
       // Set a small delay to ensure selection is complete
       selectionTimer = setTimeout(() => {
-        const selection = term.getSelection();
         if (selection) {
           copyToClipboard(selection);
         }
         selectionTimer = null;
       }, 50) as any;
-    });
+      });
+    }
 
     // Add middle-click paste functionality
     termEl.addEventListener('mouseup', async (event: MouseEvent) => {
@@ -380,7 +746,52 @@
     >
       {currentTitle}
     </div>
-    <div class="flex-1 flex items-center justify-end px-3">
+    <div class="flex-1 flex items-center justify-end gap-2 px-3">
+      {#if $settings.aiEnabled && (($settings.aiProvider === 'gemini' && $settings.geminiApiKey) || ($settings.aiProvider === 'openrouter' && $settings.openRouterApiKey))}
+        <button
+          class="ai-titlebar-button"
+          class:has-selection={aiState.selectedTextForAI}
+          title={aiState.selectedTextForAI ? "Ask AI about selected text" : "Enter AI mode"}
+          on:mousedown={async (event) => {
+            if (event.button === 0) {
+              event.stopPropagation();
+              if (term) {
+                // Move to new line if not at start of line
+                const buffer = term.buffer.active;
+                if (buffer.cursorX > 0) {
+                  term.write('\r\n');
+                }
+                
+                // Enter AI mode and reset conversation
+                aiState.isInAIMode = true;
+                aiState.conversationHistory = []; // Reset conversation when entering AI mode
+                term.write('\x1b[32m━━━ Entering AI Mode ━━━\x1b[0m\r\n');
+                term.write('\x1b[90m(Press Enter with empty input or type /exit to exit)\x1b[0m\r\n\r\n');
+                
+                // If text is selected, process it
+                if (aiState.selectedTextForAI) {
+                  // Let the AI intelligently respond based on the context
+                  const contextPrompt = `Analyze the following terminal output and provide the most helpful response. If it's an error, explain how to fix it. If it's command output, explain what it means. If it's code, explain what it does. Be helpful and contextual.`;
+                  
+                  await processAIQuery(contextPrompt, aiState.selectedTextForAI, false);
+                  
+                  // Clear selection after processing
+                  term.clearSelection();
+                  aiState.selectedTextForAI = "";
+                }
+                
+                // Show AI prompt with sparkle and space
+                term.write('\x1b[36m✨  \x1b[0m');
+                
+                // Reset state
+                aiState.aiCommandBuffer = "";
+              }
+            }
+          }}
+        >
+          <SparklesIcon size={14} />
+        </button>
+      {/if}
       <button
         class="w-4 h-4 p-0.5 rounded hover:bg-theme-bg-tertiary transition-colors"
         title="Download terminal text"
@@ -412,10 +823,12 @@
   />
 </div>
 
+
 <style lang="postcss">
   .term-container {
     @apply inline-block rounded-lg border border-theme-border opacity-90;
     transition: transform 200ms, opacity 200ms;
+    position: relative;
   }
 
   .term-container:not(.focused) :global(.xterm) {
@@ -424,5 +837,27 @@
 
   .term-container.focused {
     @apply opacity-100;
+  }
+  
+  .ai-titlebar-button {
+    @apply p-0.5 rounded transition-all flex items-center justify-center;
+    background: rgba(255, 215, 0, 0.1);
+    color: #FFD700;
+    width: 20px;
+    height: 20px;
+  }
+  
+  .ai-titlebar-button:hover {
+    background: rgba(255, 215, 0, 0.2);
+  }
+  
+  .ai-titlebar-button.has-selection {
+    background: rgba(255, 215, 0, 0.25);
+    color: #FFA500;
+    box-shadow: 0 0 4px rgba(255, 215, 0, 0.3);
+  }
+  
+  .ai-titlebar-button.has-selection:hover {
+    background: rgba(255, 215, 0, 0.35);
   }
 </style>

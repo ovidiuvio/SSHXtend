@@ -6,6 +6,35 @@ import { browser } from "$app/environment";
 export type UITheme = "light" | "dark" | "auto";
 export type ToolbarPosition = "top" | "bottom" | "left" | "right";
 
+export type AIProvider = "gemini" | "openrouter";
+
+// Default context windows for known models (in tokens)
+export const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  // Gemini models
+  "gemini-2.5-flash": 1048576,  // 1M tokens
+  "gemini-2.5-pro": 2097152,    // 2M tokens
+  "gemini-2.5-flash-lite": 1048576,
+  "gemini-2.0-flash": 1048576,
+  "gemini-2.0-flash-lite": 1048576,
+  "gemini-1.5-flash": 1048576,
+  "gemini-1.5-pro": 2097152,
+  
+  // OpenRouter models (common ones)
+  "anthropic/claude-3.5-sonnet": 200000,
+  "anthropic/claude-3.5-haiku": 200000,
+  "anthropic/claude-3-opus": 200000,
+  "openai/gpt-4-turbo-preview": 128000,
+  "openai/gpt-4o": 128000,
+  "openai/gpt-4o-mini": 128000,
+  "google/gemini-pro-1.5": 1048576,
+  "meta-llama/llama-3.1-70b-instruct": 131072,
+  "deepseek/deepseek-chat": 64000,
+  "mistralai/mistral-large": 128000,
+  
+  // Default fallback
+  "default": 32000
+};
+
 export type Settings = {
   name: string;
   theme: ThemeName;
@@ -19,6 +48,20 @@ export type Settings = {
   zoomLevel: number;
   copyOnSelect: boolean;
   middleClickPaste: boolean;
+  aiEnabled: boolean;
+  aiProvider: AIProvider;
+  // Gemini settings
+  geminiApiKey: string;
+  aiModel: string;
+  aiModels: string[]; // Custom list of available Gemini models
+  // OpenRouter settings
+  openRouterApiKey: string;
+  openRouterModel: string;
+  openRouterModels: string[]; // Custom list of available OpenRouter models
+  // Context management
+  aiContextLength: number; // Maximum context length in tokens
+  aiAutoCompress: boolean; // Auto-compress when reaching 90% of context
+  aiMaxResponseTokens: number; // Maximum tokens in AI response
 };
 
 const storedSettings = persisted<Partial<Settings>>("sshx-settings-store", {});
@@ -86,6 +129,84 @@ export const settings: Readable<Settings> = derived(
       middleClickPaste = true;
     }
 
+    let aiEnabled = $storedSettings.aiEnabled;
+    if (typeof aiEnabled !== "boolean") {
+      aiEnabled = false;
+    }
+
+    let aiProvider = $storedSettings.aiProvider;
+    if (!aiProvider || !["gemini", "openrouter"].includes(aiProvider)) {
+      aiProvider = "gemini";
+    }
+
+    let geminiApiKey = $storedSettings.geminiApiKey;
+    if (typeof geminiApiKey !== "string") {
+      geminiApiKey = "";
+    }
+
+    let aiModel = $storedSettings.aiModel;
+    if (typeof aiModel !== "string" || aiModel === "") {
+      aiModel = "gemini-2.5-flash";
+    }
+    
+    let aiModels = $storedSettings.aiModels;
+    if (!Array.isArray(aiModels) || aiModels.length === 0) {
+      // Default list of common Gemini models
+      aiModels = [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+      ];
+    }
+
+    let openRouterApiKey = $storedSettings.openRouterApiKey;
+    if (typeof openRouterApiKey !== "string") {
+      openRouterApiKey = "";
+    }
+
+    let openRouterModel = $storedSettings.openRouterModel;
+    if (typeof openRouterModel !== "string" || openRouterModel === "") {
+      openRouterModel = "anthropic/claude-3.5-sonnet";
+    }
+
+    let openRouterModels = $storedSettings.openRouterModels;
+    if (!Array.isArray(openRouterModels) || openRouterModels.length === 0) {
+      // Default list of popular OpenRouter models
+      openRouterModels = [
+        "anthropic/claude-3.5-sonnet",
+        "anthropic/claude-3.5-haiku",
+        "openai/gpt-4-turbo-preview",
+        "openai/gpt-4o",
+        "openai/gpt-4o-mini",
+        "google/gemini-pro-1.5",
+        "meta-llama/llama-3.1-70b-instruct",
+        "deepseek/deepseek-chat",
+        "mistralai/mistral-large",
+      ];
+    }
+
+    // Get the appropriate model based on provider
+    const currentModel = aiProvider === 'gemini' ? aiModel : openRouterModel;
+    
+    // Context length - use model default or user override
+    let aiContextLength = $storedSettings.aiContextLength;
+    if (typeof aiContextLength !== "number" || aiContextLength <= 0) {
+      // Use default for current model
+      aiContextLength = MODEL_CONTEXT_WINDOWS[currentModel] || MODEL_CONTEXT_WINDOWS["default"];
+    }
+
+    let aiAutoCompress = $storedSettings.aiAutoCompress;
+    if (typeof aiAutoCompress !== "boolean") {
+      aiAutoCompress = true; // Default to auto-compression enabled
+    }
+
+    let aiMaxResponseTokens = $storedSettings.aiMaxResponseTokens;
+    if (typeof aiMaxResponseTokens !== "number" || aiMaxResponseTokens <= 0) {
+      aiMaxResponseTokens = 4096; // Default to 4K tokens for response
+    }
+
     return {
       name,
       theme,
@@ -99,6 +220,17 @@ export const settings: Readable<Settings> = derived(
       zoomLevel,
       copyOnSelect,
       middleClickPaste,
+      aiEnabled,
+      aiProvider,
+      geminiApiKey,
+      aiModel,
+      aiModels,
+      openRouterApiKey,
+      openRouterModel,
+      openRouterModels,
+      aiContextLength,
+      aiAutoCompress,
+      aiMaxResponseTokens,
     };
   },
 );

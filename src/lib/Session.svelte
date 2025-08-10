@@ -66,6 +66,7 @@
   let toolbarVisible = true;
   let toolbarHoverTimeout: number | null = null;
   
+  
   $: toolbarPosition = $settings.toolbarPosition;
   
   // Force toolbar visible when connection issues
@@ -317,6 +318,7 @@
     srocket?.send({ create: [x, y] });
     touchZoom.moveTo([x, y], INITIAL_ZOOM);
   }
+  
 
   async function handleInput(id: number, data: Uint8Array) {
     if (counter === 0n) {
@@ -390,6 +392,7 @@
         sendMove.cancel();
         srocket?.send({ move: [moving, movingSize] });
       }
+      
 
       if (resizing !== -1) {
         resizing = -1;
@@ -732,6 +735,7 @@
         />
       </div>
     {/each}
+    
 
     {#each users.filter(([id, user]) => id !== userId && user.cursor !== null) as [id, user] (id)}
       <div

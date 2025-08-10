@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { ChevronDownIcon, MonitorIcon, TypeIcon, CopyIcon, UserIcon } from "svelte-feather-icons";
+  import { ChevronDownIcon, MonitorIcon, TypeIcon, CopyIcon, UserIcon, EyeIcon, EyeOffIcon } from "svelte-feather-icons";
+  import SparklesIcon from "./icons/SparklesIcon.svelte";
 
-  import { settings, updateSettings, type UITheme, type ToolbarPosition } from "$lib/settings";
+  import { settings, updateSettings, type UITheme, type ToolbarPosition, type AIProvider, MODEL_CONTEXT_WINDOWS } from "$lib/settings";
   import OverlayMenu from "./OverlayMenu.svelte";
   import themes, { type ThemeName } from "./themes";
 
@@ -18,6 +19,20 @@
   let inputToolbarPosition: ToolbarPosition;
   let inputCopyOnSelect: boolean;
   let inputMiddleClickPaste: boolean;
+  let inputAIEnabled: boolean;
+  let inputAIProvider: AIProvider;
+  let inputGeminiApiKey: string;
+  let inputAIModel: string;
+  let inputAIModels: string[] = [];
+  let inputOpenRouterApiKey: string;
+  let inputOpenRouterModel: string;
+  let inputOpenRouterModels: string[] = [];
+  let inputAIContextLength: number;
+  let inputAIAutoCompress: boolean;
+  let inputAIMaxResponseTokens: number;
+  let newModelName = "";
+  let showGeminiApiKey = false;
+  let showOpenRouterApiKey = false;
 
   const fontOptions = [
     {
@@ -77,16 +92,28 @@
     inputToolbarPosition = $settings.toolbarPosition;
     inputCopyOnSelect = $settings.copyOnSelect;
     inputMiddleClickPaste = $settings.middleClickPaste;
+    inputAIEnabled = $settings.aiEnabled;
+    inputAIProvider = $settings.aiProvider;
+    inputGeminiApiKey = $settings.geminiApiKey;
+    inputAIModel = $settings.aiModel;
+    inputAIModels = $settings.aiModels;
+    inputOpenRouterApiKey = $settings.openRouterApiKey;
+    inputOpenRouterModel = $settings.openRouterModel;
+    inputOpenRouterModels = $settings.openRouterModels;
+    inputAIContextLength = $settings.aiContextLength;
+    inputAIAutoCompress = $settings.aiAutoCompress;
+    inputAIMaxResponseTokens = $settings.aiMaxResponseTokens;
   }
 
-  type Tab = "profile" | "appearance" | "terminal" | "behavior";
+  type Tab = "profile" | "appearance" | "terminal" | "behavior" | "ai";
   let activeTab: Tab = "profile";
 
-  const tabs: { id: Tab; label: string; icon: typeof UserIcon }[] = [
+  const tabs: { id: Tab; label: string; icon: any }[] = [
     { id: "profile", label: "Profile", icon: UserIcon },
     { id: "appearance", label: "Appearance", icon: MonitorIcon },
     { id: "terminal", label: "Terminal", icon: TypeIcon },
     { id: "behavior", label: "Behavior", icon: CopyIcon },
+    { id: "ai", label: "AI", icon: SparklesIcon },
   ];
 </script>
 
@@ -351,6 +378,389 @@
           </label>
         </div>
       </div>
+    {:else if activeTab === "ai"}
+      <!-- AI Tab -->
+      <div class="item">
+        <div>
+          <p class="item-title">Enable AI Assistant</p>
+          <p class="item-subtitle">
+            Enable AI-powered assistance for terminal output using {inputAIProvider === 'openrouter' ? 'OpenRouter' : 'Google Gemini'}.
+          </p>
+        </div>
+        <div>
+          <label class="switch">
+            <input
+              type="checkbox"
+              bind:checked={inputAIEnabled}
+              on:change={() => updateSettings({ aiEnabled: inputAIEnabled })}
+            />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      
+      {#if inputAIEnabled}
+        <div class="item">
+          <div>
+            <p class="item-title">Auto-Compress Conversations</p>
+            <p class="item-subtitle">
+              Automatically compress conversation history when approaching context limit (90% usage)
+            </p>
+          </div>
+          <div>
+            <label class="switch">
+              <input
+                type="checkbox"
+                bind:checked={inputAIAutoCompress}
+                on:change={() => updateSettings({ aiAutoCompress: inputAIAutoCompress })}
+              />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      
+        <div class="item">
+          <div>
+            <p class="item-title">AI Provider</p>
+            <p class="item-subtitle">
+              Choose which AI service to use for terminal assistance.
+            </p>
+          </div>
+          <div class="relative">
+            <ChevronDownIcon
+              class="absolute top-[11px] right-2.5 w-4 h-4 text-theme-fg-muted"
+            />
+            <select
+              class="input-common !pr-5"
+              bind:value={inputAIProvider}
+              on:change={() => updateSettings({ aiProvider: inputAIProvider })}
+            >
+              <option value="gemini">Google Gemini</option>
+              <option value="openrouter">OpenRouter</option>
+            </select>
+          </div>
+        </div>
+        
+        {#if inputAIProvider === 'gemini'}
+        <div class="item">
+          <div>
+            <p class="item-title">Gemini API Key</p>
+            <p class="item-subtitle">
+              Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener" class="text-theme-accent hover:underline">Google AI Studio</a>
+            </p>
+          </div>
+          <div class="relative">
+            {#if showGeminiApiKey}
+              <input
+                type="text"
+                class="input-common !pr-10"
+                placeholder="Enter your Gemini API key"
+                bind:value={inputGeminiApiKey}
+                on:input={() => updateSettings({ geminiApiKey: inputGeminiApiKey })}
+              />
+            {:else}
+              <input
+                type="password"
+                class="input-common !pr-10"
+                placeholder="Enter your Gemini API key"
+                bind:value={inputGeminiApiKey}
+                on:input={() => updateSettings({ geminiApiKey: inputGeminiApiKey })}
+              />
+            {/if}
+            <button
+              type="button"
+              class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-theme-bg-tertiary transition-colors"
+              on:click={() => showGeminiApiKey = !showGeminiApiKey}
+            >
+              {#if showGeminiApiKey}
+                <EyeOffIcon class="w-4 h-4 text-theme-fg-muted" />
+              {:else}
+                <EyeIcon class="w-4 h-4 text-theme-fg-muted" />
+              {/if}
+            </button>
+          </div>
+        </div>
+        
+        <div class="item">
+          <div>
+            <p class="item-title">AI Model</p>
+            <p class="item-subtitle">
+              Select or add Gemini models for AI assistance.
+            </p>
+          </div>
+          <div class="space-y-2">
+            <div class="relative">
+              <ChevronDownIcon
+                class="absolute top-[11px] right-2.5 w-4 h-4 text-theme-fg-muted"
+              />
+              <select
+                class="input-common !pr-5"
+                bind:value={inputAIModel}
+                on:change={() => updateSettings({ aiModel: inputAIModel })}
+              >
+                {#each inputAIModels as model}
+                  <option value={model}>{model}</option>
+                {/each}
+              </select>
+            </div>
+            
+            <!-- Add custom model -->
+            <div class="flex gap-2">
+              <input
+                type="text"
+                class="input-common flex-1"
+                placeholder="Add custom model (e.g., gemini-exp-1206)"
+                bind:value={newModelName}
+                on:keydown={(e) => {
+                  if (e.key === 'Enter' && newModelName.trim()) {
+                    if (!inputAIModels.includes(newModelName.trim())) {
+                      inputAIModels = [...inputAIModels, newModelName.trim()];
+                      updateSettings({ aiModels: inputAIModels });
+                      if (!inputAIModel) {
+                        inputAIModel = newModelName.trim();
+                        updateSettings({ aiModel: inputAIModel });
+                      }
+                    }
+                    newModelName = '';
+                  }
+                }}
+              />
+              <button
+                class="btn-primary px-3 py-1.5"
+                on:click={() => {
+                  if (newModelName.trim() && !inputAIModels.includes(newModelName.trim())) {
+                    inputAIModels = [...inputAIModels, newModelName.trim()];
+                    updateSettings({ aiModels: inputAIModels });
+                    if (!inputAIModel) {
+                      inputAIModel = newModelName.trim();
+                      updateSettings({ aiModel: inputAIModel });
+                    }
+                    newModelName = '';
+                  }
+                }}
+              >
+                Add
+              </button>
+            </div>
+            
+            <!-- Model list with remove buttons -->
+            {#if inputAIModels.length > 1}
+              <div class="text-xs text-theme-fg-muted mt-2">
+                <p class="mb-1">Available models (click to remove):</p>
+                <div class="flex flex-wrap gap-1">
+                  {#each inputAIModels as model}
+                    <button
+                      class="px-2 py-0.5 bg-theme-bg-tertiary/50 rounded hover:bg-red-500/20 transition-colors"
+                      title="Click to remove {model}"
+                      on:click={() => {
+                        if (inputAIModels.length > 1) {
+                          inputAIModels = inputAIModels.filter(m => m !== model);
+                          updateSettings({ aiModels: inputAIModels });
+                          if (inputAIModel === model) {
+                            inputAIModel = inputAIModels[0];
+                            updateSettings({ aiModel: inputAIModel });
+                          }
+                        }
+                      }}
+                    >
+                      {model} ×
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          </div>
+        </div>
+        
+        {:else if inputAIProvider === 'openrouter'}
+        <div class="item">
+          <div>
+            <p class="item-title">OpenRouter API Key</p>
+            <p class="item-subtitle">
+              Get your API key from <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" class="text-theme-accent hover:underline">OpenRouter</a>
+            </p>
+          </div>
+          <div class="relative">
+            {#if showOpenRouterApiKey}
+              <input
+                type="text"
+                class="input-common !pr-10"
+                placeholder="Enter your OpenRouter API key"
+                bind:value={inputOpenRouterApiKey}
+                on:input={() => updateSettings({ openRouterApiKey: inputOpenRouterApiKey })}
+              />
+            {:else}
+              <input
+                type="password"
+                class="input-common !pr-10"
+                placeholder="Enter your OpenRouter API key"
+                bind:value={inputOpenRouterApiKey}
+                on:input={() => updateSettings({ openRouterApiKey: inputOpenRouterApiKey })}
+              />
+            {/if}
+            <button
+              type="button"
+              class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-theme-bg-tertiary transition-colors"
+              on:click={() => showOpenRouterApiKey = !showOpenRouterApiKey}
+            >
+              {#if showOpenRouterApiKey}
+                <EyeOffIcon class="w-4 h-4 text-theme-fg-muted" />
+              {:else}
+                <EyeIcon class="w-4 h-4 text-theme-fg-muted" />
+              {/if}
+            </button>
+          </div>
+        </div>
+        
+        <div class="item">
+          <div>
+            <p class="item-title">OpenRouter Model</p>
+            <p class="item-subtitle">
+              Select or add OpenRouter models for AI assistance.
+            </p>
+          </div>
+          <div class="space-y-2">
+            <div class="relative">
+              <ChevronDownIcon
+                class="absolute top-[11px] right-2.5 w-4 h-4 text-theme-fg-muted"
+              />
+              <select
+                class="input-common !pr-5"
+                bind:value={inputOpenRouterModel}
+                on:change={() => updateSettings({ openRouterModel: inputOpenRouterModel })}
+              >
+                {#each inputOpenRouterModels as model}
+                  <option value={model}>{model}</option>
+                {/each}
+              </select>
+            </div>
+            
+            <!-- Add custom model -->
+            <div class="flex gap-2">
+              <input
+                type="text"
+                class="input-common flex-1"
+                placeholder="Add custom model (e.g., openai/gpt-4-turbo)"
+                bind:value={newModelName}
+                on:keydown={(e) => {
+                  if (e.key === 'Enter' && newModelName.trim()) {
+                    if (!inputOpenRouterModels.includes(newModelName.trim())) {
+                      inputOpenRouterModels = [...inputOpenRouterModels, newModelName.trim()];
+                      updateSettings({ openRouterModels: inputOpenRouterModels });
+                      if (!inputOpenRouterModel) {
+                        inputOpenRouterModel = newModelName.trim();
+                        updateSettings({ openRouterModel: inputOpenRouterModel });
+                      }
+                    }
+                    newModelName = '';
+                  }
+                }}
+              />
+              <button
+                class="btn-primary px-3 py-1.5"
+                on:click={() => {
+                  if (newModelName.trim() && !inputOpenRouterModels.includes(newModelName.trim())) {
+                    inputOpenRouterModels = [...inputOpenRouterModels, newModelName.trim()];
+                    updateSettings({ openRouterModels: inputOpenRouterModels });
+                    if (!inputOpenRouterModel) {
+                      inputOpenRouterModel = newModelName.trim();
+                      updateSettings({ openRouterModel: inputOpenRouterModel });
+                    }
+                    newModelName = '';
+                  }
+                }}
+              >
+                Add
+              </button>
+            </div>
+            
+            <!-- Model list with remove buttons -->
+            {#if inputOpenRouterModels.length > 1}
+              <div class="text-xs text-theme-fg-muted mt-2">
+                <p class="mb-1">Available models (click to remove):</p>
+                <div class="flex flex-wrap gap-1">
+                  {#each inputOpenRouterModels as model}
+                    <button
+                      class="px-2 py-0.5 bg-theme-bg-tertiary/50 rounded hover:bg-red-500/20 transition-colors"
+                      title="Click to remove {model}"
+                      on:click={() => {
+                        if (inputOpenRouterModels.length > 1) {
+                          inputOpenRouterModels = inputOpenRouterModels.filter(m => m !== model);
+                          updateSettings({ openRouterModels: inputOpenRouterModels });
+                          if (inputOpenRouterModel === model) {
+                            inputOpenRouterModel = inputOpenRouterModels[0];
+                            updateSettings({ openRouterModel: inputOpenRouterModel });
+                          }
+                        }
+                      }}
+                    >
+                      {model} ×
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          </div>
+        </div>
+        {/if}
+        
+        <!-- Context Management Settings -->
+        <div class="item">
+          <div>
+            <p class="item-title">Context Window Size</p>
+            <p class="item-subtitle">
+              Maximum tokens for conversation. Default: {MODEL_CONTEXT_WINDOWS[inputAIProvider === 'gemini' ? inputAIModel : inputOpenRouterModel] || MODEL_CONTEXT_WINDOWS["default"]} tokens
+            </p>
+          </div>
+          <div class="space-y-2">
+            <input
+              type="number"
+              class="input-common"
+              placeholder="Use model default"
+              bind:value={inputAIContextLength}
+              on:input={() => {
+                if (inputAIContextLength && inputAIContextLength > 0) {
+                  updateSettings({ aiContextLength: inputAIContextLength });
+                }
+              }}
+              min="1000"
+              max="2097152"
+              step="1000"
+            />
+            <p class="text-xs text-theme-fg-muted">
+              Leave empty to use model's default context window
+            </p>
+          </div>
+        </div>
+        
+        <div class="item">
+          <div>
+            <p class="item-title">Max Response Length</p>
+            <p class="item-subtitle">
+              Maximum tokens for AI responses. Default: 4096 tokens
+            </p>
+          </div>
+          <div class="space-y-2">
+            <input
+              type="number"
+              class="input-common"
+              placeholder="4096"
+              bind:value={inputAIMaxResponseTokens}
+              on:input={() => {
+                if (inputAIMaxResponseTokens && inputAIMaxResponseTokens > 0) {
+                  updateSettings({ aiMaxResponseTokens: inputAIMaxResponseTokens });
+                }
+              }}
+              min="256"
+              max="32768"
+              step="256"
+            />
+            <p class="text-xs text-theme-fg-muted">
+              Controls the maximum length of AI responses (256-32768 tokens)
+            </p>
+          </div>
+        </div>
+      {/if}
     {/if}
   </div>
 

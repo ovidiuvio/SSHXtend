@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.0.8",
+    "@google/generative-ai": "^0.24.1",
     "@rgossiaux/svelte-headlessui": "^2.0.0",
     "@tldraw/vec": "^1.9.2",
     "@use-gesture/vanilla": "^10.2.27",
