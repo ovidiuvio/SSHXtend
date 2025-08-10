@@ -78,6 +78,16 @@
     term.options.fontSize = $settings.fontSize;
   }
 
+  async function copyToClipboard(text: string) {
+    if (!text) return;
+    
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      console.error('Failed to copy text to clipboard:', err);
+    }
+  }
+
   let loaded = false;
   let focused = false;
   let currentTitle = "Remote Terminal";
@@ -286,6 +296,26 @@
     });
     term.onBinary((data: string) => {
       dispatch("data", Buffer.from(data, "binary"));
+    });
+
+    // Add copy-on-select functionality
+    let selectionTimer: number | null = null;
+    term.onSelectionChange(() => {
+      if (!$settings.copyOnSelect) return;
+      
+      // Clear any existing timer
+      if (selectionTimer !== null) {
+        clearTimeout(selectionTimer);
+      }
+      
+      // Set a small delay to ensure selection is complete
+      selectionTimer = setTimeout(() => {
+        const selection = term.getSelection();
+        if (selection) {
+          copyToClipboard(selection);
+        }
+        selectionTimer = null;
+      }, 50) as any;
     });
   });
 
