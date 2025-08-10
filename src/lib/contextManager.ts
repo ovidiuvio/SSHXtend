@@ -84,13 +84,9 @@ export class ContextManager {
       return conversation;
     }
     
-    // Separate context from conversation
-    const contextEntry = conversation.find(entry => entry.role === 'Context');
-    const conversationOnly = conversation.filter(entry => entry.role !== 'Context');
-    
     // Keep the most recent exchange intact
-    const recentExchanges = conversationOnly.slice(-2); // Last Q&A pair
-    const toCompress = conversationOnly.slice(0, -2); // Everything else
+    const recentExchanges = conversation.slice(-2); // Last Q&A pair
+    const toCompress = conversation.slice(0, -2); // Everything else
     
     if (toCompress.length < 2) {
       return conversation; // Not enough to compress
@@ -130,11 +126,6 @@ Compress the conversation now:`;
       
       // Create new compressed conversation
       const compressedConversation: ConversationEntry[] = [];
-      
-      // Add context if it exists
-      if (contextEntry) {
-        compressedConversation.push(contextEntry);
-      }
       
       // Add compressed summary as a system message
       compressedConversation.push({

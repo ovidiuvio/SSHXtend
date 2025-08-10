@@ -40,6 +40,7 @@
   import { Buffer } from "buffer";
   import { DownloadIcon } from "svelte-feather-icons";
   import SparklesIcon from "./icons/SparklesIcon.svelte";
+  import SparklesNewIcon from "./icons/SparklesNewIcon.svelte";
 
   import themes from "./themes";
   import CircleButton from "./CircleButton.svelte";
@@ -141,6 +142,9 @@
     
     aiState.isProcessingAI = true;
     
+    // Track if this is a new conversation (before we potentially add to history)
+    const isNewConversation = aiState.conversationHistory.length === 0;
+    
     // Show the user's query as "committed" if not already shown
     if (showQuery && query) {
       term.write('\x1b[32m> \x1b[0m' + query + '\r\n');
@@ -170,53 +174,47 @@
       }
       // Build the full context including conversation history
       let fullContext = "";
+      let needsInitialContext = false;
       
-      // Always include the initial terminal context if we have it
-      // Store it in the first conversation entry
-      if (aiState.conversationHistory.length === 0 && initialContext) {
-        // Store the initial context as a system message
-        aiState.conversationHistory.push({
-          role: 'Context',
-          content: initialContext
-        });
-      } else if (aiState.conversationHistory.length === 0 && !initialContext) {
-        // No context provided and no history, get terminal buffer
-        const buffer = term.buffer.active;
-        const lines = [];
-        const startLine = Math.max(0, buffer.cursorY - 50);
-        for (let i = startLine; i <= buffer.cursorY; i++) {
-          const line = buffer.getLine(i);
-          if (line) {
-            lines.push(line.translateToString(true));
+      // Check if we need initial context (first time or empty history)
+      if (aiState.conversationHistory.length === 0) {
+        needsInitialContext = true;
+        
+        if (initialContext) {
+          // Use provided initial context
+          fullContext = `Terminal context:\n${initialContext}\n\n`;
+        } else {
+          // Get terminal buffer as context
+          const buffer = term.buffer.active;
+          const lines = [];
+          const startLine = Math.max(0, buffer.cursorY - 50);
+          for (let i = startLine; i <= buffer.cursorY; i++) {
+            const line = buffer.getLine(i);
+            if (line) {
+              lines.push(line.translateToString(true));
+            }
+          }
+          if (lines.join('\n').trim()) {
+            fullContext = `Terminal context:\n${lines.join('\n')}\n\n`;
           }
         }
-        if (lines.join('\n').trim()) {
-          aiState.conversationHistory.push({
-            role: 'Context',
-            content: lines.join('\n')
-          });
-        }
-      }
-      
-      // Build full context from conversation history
-      if (aiState.conversationHistory.length > 0) {
-        // Find the initial context (first Context entry)
-        const contextEntry = aiState.conversationHistory.find(msg => msg.role === 'Context');
-        if (contextEntry) {
-          fullContext = `Terminal context:\n${contextEntry.content}\n\n`;
-        }
+      } else {
+        // We have existing conversation history
+        // Build context from conversation in chronological order
+        fullContext = "Previous conversation:\n";
+        aiState.conversationHistory.forEach(msg => {
+          fullContext += `${msg.role}: ${msg.content}\n\n`;
+        });
         
-        // Add conversation history (excluding Context entries)
-        const conversation = aiState.conversationHistory.filter(msg => msg.role !== 'Context');
-        if (conversation.length > 0) {
-          fullContext += "Previous conversation:\n";
-          conversation.forEach(msg => {
-            fullContext += `${msg.role}: ${msg.content}\n\n`;
-          });
-        }
+        // If we have additional context (selected text) for continuing conversation
+        // We'll add it directly to the query that gets stored, not here
+        // This prevents duplication since it will be in the User message
       }
       
-      // Add current query
+      // Add current query with any selected text context
+      if (initialContext && !isNewConversation) {
+        fullContext += `\nAdditional terminal output to analyze:\n${initialContext}\n\n`;
+      }
       fullContext += `Current question: ${query}`;
       
       // Create system prompt for terminal context
@@ -304,34 +302,50 @@ ${fullContext}`;
       
       term.write('\x1b[32m━━━━━━━━━━━━━\x1b[0m\r\n');
       
-      // Add BOTH question and response to conversation history
-      // Only add if not already in history (to avoid duplicates)
-      const lastUserMsg = aiState.conversationHistory[aiState.conversationHistory.length - 2];
-      const lastAssistantMsg = aiState.conversationHistory[aiState.conversationHistory.length - 1];
+      // Add question and response to conversation history
+      // Store them in chronological order in a natural, conversational way
       
-      if (!lastUserMsg || lastUserMsg.content !== query || lastUserMsg.role !== 'User') {
-        aiState.conversationHistory.push({role: 'User', content: query});
-        aiState.conversationHistory.push({role: 'Assistant', content: response});
+      // Determine what the user actually communicated
+      let userMessage = query;
+      
+      // Check if this is an internal prompt (when we're adding selected text)
+      const isInternalPrompt = query.includes("Here's additional terminal output to add to our conversation") || 
+                               query.includes("Analyze the following terminal output");
+      
+      if (initialContext && isInternalPrompt) {
+        // User selected text and we're analyzing it - store what actually happened
+        if (!isNewConversation) {
+          userMessage = `Look at this additional output from my terminal:\n\n${initialContext}`;
+        } else {
+          userMessage = `Can you help me with this terminal output:\n\n${initialContext}`;
+        }
+      } else if (initialContext && !isInternalPrompt) {
+        // User typed a question after selecting text (shouldn't happen with current flow)
+        userMessage = `${initialContext}\n\n${query}`;
       }
+      // Otherwise userMessage stays as the original query
+      
+      aiState.conversationHistory.push({role: 'User', content: userMessage});
+      aiState.conversationHistory.push({role: 'Assistant', content: response});
       
       // Show context usage status
       const finalContextStatus = contextManager.getContextStatus(aiState.conversationHistory);
       const usageColor = finalContextStatus.percentageUsed > 80 ? '\x1b[33m' : '\x1b[36m';
       term.write(`${usageColor}📊  Context: ${Math.round(finalContextStatus.percentageUsed)}% used (${finalContextStatus.currentTokens}/${finalContextStatus.maxTokens} tokens)\x1b[0m\r\n`);
       
-      // Show hint about AI mode
-      term.write('\x1b[90m(Type your follow-up question, press Enter to exit, or type /exit)\x1b[0m\r\n');
+      // Show hint about AI mode with all available commands
+      term.write('\x1b[90m(Commands: Enter to exit, /exit to leave, /new for fresh conversation)\x1b[0m\r\n');
       
     } catch (error) {
       // Clear the loading message (only the loading line, keep the query visible)
       term.write('\x1b[1A\x1b[2K'); // Move up one line and clear it
       
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      term.write('\x1b[31m❌ AI Error: ' + errorMessage + '\x1b[0m\r\n');
+      term.write('\x1b[31m❌  AI Error: ' + errorMessage + '\x1b[0m\r\n');
       
       if (errorMessage.includes('API key')) {
         const providerName = $settings.aiProvider === 'openrouter' ? 'OpenRouter' : 'Gemini';
-        term.write(`\x1b[33m🔑 Please configure your ${providerName} API key in Settings ⚙️\x1b[0m\r\n`);
+        term.write(`\x1b[33m🔑  Please configure your ${providerName} API key in Settings ⚙️\x1b[0m\r\n`);
       }
     } finally {
       aiState.isProcessingAI = false;
@@ -502,7 +516,7 @@ ${fullContext}`;
         if (selection) {
           // Enter AI mode with selected text
           aiState.isInAIMode = true;
-          aiState.conversationHistory = [];
+          // Don't reset conversation - user might want to add this to existing context
           
           // Move to new line if needed
           const buffer = term.buffer.active;
@@ -510,18 +524,26 @@ ${fullContext}`;
             term.write('\r\n');
           }
           
-          term.write('\x1b[32m━━━ Entering AI Mode ━━━\x1b[0m\r\n');
-          term.write('\x1b[90m(Press Enter with empty input or type /exit to exit)\x1b[0m\r\n\r\n');
+          const hasHistory = aiState.conversationHistory.length > 0;
+          term.write('\x1b[32m━━━ AI Mode ━━━\x1b[0m\r\n');
+          if (hasHistory) {
+            const contextStatus = contextManager.getContextStatus(aiState.conversationHistory);
+            term.write(`\x1b[36m📚  Continuing previous conversation (${aiState.conversationHistory.filter(e => e.role !== 'Context').length / 2} exchanges, ${Math.round(contextStatus.percentageUsed)}% context used)\x1b[0m\r\n`);
+            term.write('\x1b[33m📎  Adding selected text to conversation context...\x1b[0m\r\n');
+          }
+          term.write('\x1b[90m(Commands: Enter to exit, /exit to leave, /new for fresh conversation)\x1b[0m\r\n\r\n');
           
-          // Let the AI intelligently respond based on the context
-          const contextPrompt = `Analyze the following terminal output and provide the most helpful response. If it's an error, explain how to fix it. If it's command output, explain what it means. If it's code, explain what it does. Be helpful and contextual.`;
+          // Adapt the prompt based on whether we have history
+          const contextPrompt = hasHistory 
+            ? `Here's additional terminal output to add to our conversation context. Analyze it and provide the most helpful response based on our previous discussion and this new information.`
+            : `Analyze the following terminal output and provide the most helpful response. If it's an error, explain how to fix it. If it's command output, explain what it means. If it's code, explain what it does. Be helpful and contextual.`;
           
           processAIQuery(contextPrompt, selection, false).then(() => {
             if (term) term.write('\x1b[36m✨  \x1b[0m');
           });
         } else {
           // No selection, show help
-          term.write('\r\n\x1b[33m⚠️ Select text first, then press Ctrl+Shift+A (or Cmd+Shift+A) to ask AI\x1b[0m\r\n');
+          term.write('\r\n\x1b[33m⚠️  Select text first, then press Ctrl+Shift+A (or Cmd+Shift+A) to ask AI\x1b[0m\r\n');
         }
         return false;
       }
@@ -595,8 +617,25 @@ ${fullContext}`;
         if (data === '\r' || data === '\n') {
           const query = aiState.aiCommandBuffer.trim();
           
-          // Check for exit conditions
-          if (query === '' || query === '/exit') {
+          // Check for special commands
+          if (query === '/new') {
+            // Clear conversation history explicitly
+            aiState.conversationHistory = [];
+            aiState.aiCommandBuffer = "";
+            
+            // Clear the input line
+            const clearLength = 4; // Length of "/new"
+            let clearSequence = '';
+            for (let i = 0; i < clearLength; i++) {
+              clearSequence += '\b \b';
+            }
+            if (term) {
+              term.write(clearSequence);
+              term.write('\r\n');
+              term.write('\x1b[32m🔄 Started new conversation\x1b[0m\r\n');
+              term.write('\x1b[36m✨  \x1b[0m');
+            }
+          } else if (query === '' || query === '/exit') {
             // Clear the input line if we typed /exit
             if (query === '/exit') {
               const clearLength = aiState.aiCommandBuffer.length;
@@ -607,19 +646,19 @@ ${fullContext}`;
               if (term) term.write(clearSequence);
             }
             
-            // Exit AI mode and return to shell
+            // Exit AI mode and return to shell (but keep conversation)
             if (term) {
               term.write('\r\n');
-              term.write('\x1b[90mExiting AI mode...\x1b[0m\r\n');
+              term.write('\x1b[90mExiting AI mode (conversation preserved)...\x1b[0m\r\n');
             }
             aiState.isInAIMode = false;
             aiState.aiCommandBuffer = "";
-            aiState.conversationHistory = []; // Clear entire conversation including context
+            // Don't clear conversation history - keep it for next time
             // Send a single Enter to restore shell prompt
             dispatch("data", utf8.encode('\r'));
           } else {
             // Move to new line, showing the user's input as "committed"
-            term.write('\r\n');
+            if (term) term.write('\r\n');
             
             // Reset buffer immediately so it doesn't appear duplicated
             aiState.aiCommandBuffer = "";
@@ -638,11 +677,11 @@ ${fullContext}`;
         } else if (data === '\x03') { // Ctrl+C - exit AI mode
           if (term) {
             term.write('\r\n');
-            term.write('\x1b[90mExiting AI mode...\x1b[0m\r\n');
+            term.write('\x1b[90mExiting AI mode (conversation preserved)...\x1b[0m\r\n');
           }
           aiState.isInAIMode = false;
           aiState.aiCommandBuffer = "";
-          aiState.conversationHistory = []; // Clear conversation history
+          // Don't clear conversation history - keep it for next time
           // Don't send anything - user will get prompt when they type
         } else if (data.charCodeAt(0) >= 32) { // Printable characters
           aiState.aiCommandBuffer += data;
@@ -748,31 +787,87 @@ ${fullContext}`;
     </div>
     <div class="flex-1 flex items-center justify-end gap-2 px-3">
       {#if $settings.aiEnabled && (($settings.aiProvider === 'gemini' && $settings.geminiApiKey) || ($settings.aiProvider === 'openrouter' && $settings.openRouterApiKey))}
+        {#if aiState.conversationHistory.length > 0 && !aiState.isInAIMode}
+          <!-- Continue conversation button (only visible when conversation exists) -->
+          <button
+            class="ai-titlebar-button continue-conversation"
+            class:has-selection={aiState.selectedTextForAI}
+            title={aiState.selectedTextForAI ? "Add selected text to conversation" : "Continue AI conversation"}
+            on:mousedown={async (event) => {
+              if (event.button === 0) {
+                event.stopPropagation();
+                if (term) {
+                  // Move to new line if not at start of line
+                  const buffer = term.buffer.active;
+                  if (buffer.cursorX > 0) {
+                    term.write('\r\n');
+                  }
+                  
+                  // Enter AI mode - continue existing conversation
+                  aiState.isInAIMode = true;
+                  term.write('\x1b[32m━━━ Continuing AI Conversation ━━━\x1b[0m\r\n');
+                  const contextStatus = contextManager.getContextStatus(aiState.conversationHistory);
+                  term.write(`\x1b[36m📚 Resuming conversation (${aiState.conversationHistory.filter(e => e.role !== 'Context').length / 2} exchanges, ${Math.round(contextStatus.percentageUsed)}% context used)\x1b[0m\r\n`);
+                  
+                  // If text is selected, add it to the conversation
+                  if (aiState.selectedTextForAI) {
+                    term.write('\x1b[33m📎 Adding selected text to conversation context...\x1b[0m\r\n');
+                  }
+                  
+                  term.write('\x1b[90m(Commands: /exit to leave, /new to start fresh conversation)\x1b[0m\r\n\r\n');
+                  
+                  // If text is selected, process it
+                  if (aiState.selectedTextForAI) {
+                    const contextPrompt = `Here's additional terminal output to add to our conversation context. Analyze it and provide the most helpful response based on our previous discussion and this new information.`;
+                    // Don't show the internal prompt, just process with context
+                    await processAIQuery(contextPrompt, aiState.selectedTextForAI, false);
+                    
+                    // Clear selection after processing
+                    term.clearSelection();
+                    aiState.selectedTextForAI = "";
+                  }
+                  
+                  // Show AI prompt with sparkle and space
+                  term.write('\x1b[36m✨  \x1b[0m');
+                  
+                  // Reset state
+                  aiState.aiCommandBuffer = "";
+                }
+              }
+            }}
+          >
+            <SparklesIcon size={14} />
+          </button>
+        {/if}
+        
+        <!-- New conversation button (always visible when AI is enabled) -->
         <button
-          class="ai-titlebar-button"
+          class="ai-titlebar-button new-conversation"
           class:has-selection={aiState.selectedTextForAI}
-          title={aiState.selectedTextForAI ? "Ask AI about selected text" : "Enter AI mode"}
+          title={aiState.selectedTextForAI ? "Start new conversation with selected text" : "Start new AI conversation"}
           on:mousedown={async (event) => {
             if (event.button === 0) {
               event.stopPropagation();
               if (term) {
+                // Clear conversation history for new conversation
+                aiState.conversationHistory = [];
+                
                 // Move to new line if not at start of line
                 const buffer = term.buffer.active;
                 if (buffer.cursorX > 0) {
                   term.write('\r\n');
                 }
                 
-                // Enter AI mode and reset conversation
+                // Enter AI mode with fresh conversation
                 aiState.isInAIMode = true;
-                aiState.conversationHistory = []; // Reset conversation when entering AI mode
-                term.write('\x1b[32m━━━ Entering AI Mode ━━━\x1b[0m\r\n');
-                term.write('\x1b[90m(Press Enter with empty input or type /exit to exit)\x1b[0m\r\n\r\n');
+                term.write('\x1b[32m━━━ Starting New AI Conversation ━━━\x1b[0m\r\n');
+                term.write('\x1b[90m(Commands: /exit to leave, /new to start fresh conversation)\x1b[0m\r\n\r\n');
                 
                 // If text is selected, process it
                 if (aiState.selectedTextForAI) {
                   // Let the AI intelligently respond based on the context
                   const contextPrompt = `Analyze the following terminal output and provide the most helpful response. If it's an error, explain how to fix it. If it's command output, explain what it means. If it's code, explain what it does. Be helpful and contextual.`;
-                  
+                  // Don't show the internal prompt, just process with context
                   await processAIQuery(contextPrompt, aiState.selectedTextForAI, false);
                   
                   // Clear selection after processing
@@ -789,7 +884,7 @@ ${fullContext}`;
             }
           }}
         >
-          <SparklesIcon size={14} />
+          <SparklesNewIcon size={14} />
         </button>
       {/if}
       <button
@@ -841,23 +936,46 @@ ${fullContext}`;
   
   .ai-titlebar-button {
     @apply p-0.5 rounded transition-all flex items-center justify-center;
-    background: rgba(255, 215, 0, 0.1);
-    color: #FFD700;
     width: 20px;
     height: 20px;
   }
   
-  .ai-titlebar-button:hover {
-    background: rgba(255, 215, 0, 0.2);
+  /* Continue conversation button - blue */
+  .ai-titlebar-button.continue-conversation {
+    background: rgba(59, 130, 246, 0.1);
+    color: #3B82F6;
   }
   
-  .ai-titlebar-button.has-selection {
-    background: rgba(255, 215, 0, 0.25);
+  .ai-titlebar-button.continue-conversation:hover {
+    background: rgba(59, 130, 246, 0.2);
+  }
+  
+  .ai-titlebar-button.continue-conversation.has-selection {
+    background: rgba(59, 130, 246, 0.25);
+    color: #2563EB;
+    box-shadow: 0 0 4px rgba(59, 130, 246, 0.3);
+  }
+  
+  .ai-titlebar-button.continue-conversation.has-selection:hover {
+    background: rgba(59, 130, 246, 0.35);
+  }
+  
+  .ai-titlebar-button.new-conversation {
+    background: rgba(255, 165, 0, 0.1);
     color: #FFA500;
-    box-shadow: 0 0 4px rgba(255, 215, 0, 0.3);
   }
   
-  .ai-titlebar-button.has-selection:hover {
-    background: rgba(255, 215, 0, 0.35);
+  .ai-titlebar-button.new-conversation:hover {
+    background: rgba(255, 165, 0, 0.2);
+  }
+  
+  .ai-titlebar-button.new-conversation.has-selection {
+    background: rgba(255, 140, 0, 0.25);
+    color: #FF8C00;
+    box-shadow: 0 0 4px rgba(255, 165, 0, 0.3);
+  }
+  
+  .ai-titlebar-button.new-conversation.has-selection:hover {
+    background: rgba(255, 140, 0, 0.35);
   }
 </style>
