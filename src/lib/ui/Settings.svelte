@@ -17,6 +17,7 @@
   let inputFontWeightBold: number;
   let inputToolbarPosition: ToolbarPosition;
   let inputCopyOnSelect: boolean;
+  let inputMiddleClickPaste: boolean;
 
   const fontOptions = [
     {
@@ -75,6 +76,7 @@
     inputFontWeightBold = $settings.fontWeightBold;
     inputToolbarPosition = $settings.toolbarPosition;
     inputCopyOnSelect = $settings.copyOnSelect;
+    inputMiddleClickPaste = $settings.middleClickPaste;
   }
 
   type Tab = "profile" | "appearance" | "terminal" | "behavior";
@@ -326,6 +328,24 @@
               type="checkbox"
               bind:checked={inputCopyOnSelect}
               on:change={() => updateSettings({ copyOnSelect: inputCopyOnSelect })}
+            />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="item">
+        <div>
+          <p class="item-title">Middle-Click Paste</p>
+          <p class="item-subtitle">
+            Paste clipboard content when clicking the middle mouse button in the terminal.
+          </p>
+        </div>
+        <div>
+          <label class="switch">
+            <input
+              type="checkbox"
+              bind:checked={inputMiddleClickPaste}
+              on:change={() => updateSettings({ middleClickPaste: inputMiddleClickPaste })}
             />
             <span class="slider"></span>
           </label>

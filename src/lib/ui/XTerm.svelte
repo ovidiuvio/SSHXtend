@@ -319,6 +319,26 @@
         selectionTimer = null;
       }, 50) as any;
     });
+
+    // Add middle-click paste functionality
+    termEl.addEventListener('mouseup', async (event: MouseEvent) => {
+      // Check if middle mouse button (button 1) was clicked
+      if (event.button === 1 && $settings.middleClickPaste) {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text) {
+            // Send the pasted text as input data
+            const utf8 = new TextEncoder();
+            dispatch("data", utf8.encode(text));
+          }
+        } catch (err) {
+          console.error('Failed to read clipboard for middle-click paste:', err);
+        }
+      }
+    });
   });
 
   onDestroy(() => term?.dispose());

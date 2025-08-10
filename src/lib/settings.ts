@@ -18,6 +18,7 @@ export type Settings = {
   toolbarPosition: ToolbarPosition;
   zoomLevel: number;
   copyOnSelect: boolean;
+  middleClickPaste: boolean;
 };
 
 const storedSettings = persisted<Partial<Settings>>("sshx-settings-store", {});
@@ -80,6 +81,11 @@ export const settings: Readable<Settings> = derived(
       copyOnSelect = true;
     }
 
+    let middleClickPaste = $storedSettings.middleClickPaste;
+    if (typeof middleClickPaste !== "boolean") {
+      middleClickPaste = true;
+    }
+
     return {
       name,
       theme,
@@ -92,6 +98,7 @@ export const settings: Readable<Settings> = derived(
       toolbarPosition,
       zoomLevel,
       copyOnSelect,
+      middleClickPaste,
     };
   },
 );
