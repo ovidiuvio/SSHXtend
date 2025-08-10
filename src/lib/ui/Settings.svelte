@@ -13,6 +13,8 @@
   let inputScrollback: number;
   let inputFontFamily: string;
   let inputFontSize: number;
+  let inputFontWeight: number;
+  let inputFontWeightBold: number;
   let inputToolbarPosition: ToolbarPosition;
   let inputCopyOnSelect: boolean;
 
@@ -69,6 +71,8 @@
     inputScrollback = $settings.scrollback;
     inputFontFamily = $settings.fontFamily;
     inputFontSize = $settings.fontSize;
+    inputFontWeight = $settings.fontWeight;
+    inputFontWeightBold = $settings.fontWeightBold;
     inputToolbarPosition = $settings.toolbarPosition;
     inputCopyOnSelect = $settings.copyOnSelect;
   }
@@ -232,6 +236,58 @@
             max="32"
             step="1"
           />
+        </div>
+      </div>
+      <div class="item">
+        <div>
+          <p class="item-title">Font Weight</p>
+          <p class="item-subtitle">Weight of normal text (100-900).</p>
+        </div>
+        <div class="relative">
+          <ChevronDownIcon
+            class="absolute top-[11px] right-2.5 w-4 h-4 text-theme-fg-muted"
+          />
+          <select
+            class="input-common !pr-5"
+            bind:value={inputFontWeight}
+            on:change={() => updateSettings({ fontWeight: inputFontWeight })}
+          >
+            <option value={100}>100 - Thin</option>
+            <option value={200}>200 - Extra Light</option>
+            <option value={300}>300 - Light</option>
+            <option value={400}>400 - Normal</option>
+            <option value={500}>500 - Medium</option>
+            <option value={600}>600 - Semi Bold</option>
+            <option value={700}>700 - Bold</option>
+            <option value={800}>800 - Extra Bold</option>
+            <option value={900}>900 - Black</option>
+          </select>
+        </div>
+      </div>
+      <div class="item">
+        <div>
+          <p class="item-title">Bold Font Weight</p>
+          <p class="item-subtitle">Weight of bold text (100-900).</p>
+        </div>
+        <div class="relative">
+          <ChevronDownIcon
+            class="absolute top-[11px] right-2.5 w-4 h-4 text-theme-fg-muted"
+          />
+          <select
+            class="input-common !pr-5"
+            bind:value={inputFontWeightBold}
+            on:change={() => updateSettings({ fontWeightBold: inputFontWeightBold })}
+          >
+            <option value={100}>100 - Thin</option>
+            <option value={200}>200 - Extra Light</option>
+            <option value={300}>300 - Light</option>
+            <option value={400}>400 - Normal</option>
+            <option value={500}>500 - Medium</option>
+            <option value={600}>600 - Semi Bold</option>
+            <option value={700}>700 - Bold</option>
+            <option value={800}>800 - Extra Bold</option>
+            <option value={900}>900 - Black</option>
+          </select>
         </div>
       </div>
       <div class="item">

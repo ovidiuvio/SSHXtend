@@ -76,6 +76,8 @@
     term.options.scrollback = $settings.scrollback;
     term.options.fontFamily = $settings.fontFamily;
     term.options.fontSize = $settings.fontSize;
+    term.options.fontWeight = $settings.fontWeight;
+    term.options.fontWeightBold = $settings.fontWeightBold;
   }
 
   async function copyToClipboard(text: string) {
@@ -220,8 +222,8 @@
       cursorStyle: "block",
       fontFamily: $settings.fontFamily,
       fontSize: $settings.fontSize,
-      fontWeight: 400,
-      fontWeightBold: 500,
+      fontWeight: $settings.fontWeight,
+      fontWeightBold: $settings.fontWeightBold,
       lineHeight: 1.06,
       scrollback: $settings.scrollback,
       theme,

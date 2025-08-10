@@ -13,6 +13,8 @@ export type Settings = {
   scrollback: number;
   fontFamily: string;
   fontSize: number;
+  fontWeight: number;
+  fontWeightBold: number;
   toolbarPosition: ToolbarPosition;
   zoomLevel: number;
   copyOnSelect: boolean;
@@ -53,6 +55,16 @@ export const settings: Readable<Settings> = derived(
       fontSize = 14;
     }
 
+    let fontWeight = $storedSettings.fontWeight;
+    if (typeof fontWeight !== "number" || fontWeight < 100 || fontWeight > 900) {
+      fontWeight = 400;
+    }
+
+    let fontWeightBold = $storedSettings.fontWeightBold;
+    if (typeof fontWeightBold !== "number" || fontWeightBold < 100 || fontWeightBold > 900) {
+      fontWeightBold = 700;
+    }
+
     let toolbarPosition = $storedSettings.toolbarPosition;
     if (!toolbarPosition || !["top", "bottom", "left", "right"].includes(toolbarPosition)) {
       toolbarPosition = "top";
@@ -75,6 +87,8 @@ export const settings: Readable<Settings> = derived(
       scrollback,
       fontFamily,
       fontSize,
+      fontWeight,
+      fontWeightBold,
       toolbarPosition,
       zoomLevel,
       copyOnSelect,
