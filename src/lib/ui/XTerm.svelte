@@ -463,13 +463,398 @@ ${fullContext}`;
     }
   };
   
-  getThumbnail = () => {
+  getThumbnail = async () => {
     if (!term || !termEl) return null;
     
+    console.log('🖼️ Starting terminal thumbnail capture...');
+    
     try {
-      // Instead of capturing WebGL canvas (which often returns black),
-      // we'll create a text-based preview from the terminal buffer
-      const buffer = term.buffer.active;
+      // Force terminal to refresh/render before capture
+      if (term) {
+        term.refresh(0, term.rows - 1);
+      }
+      
+      // Wait a frame for render to complete
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      
+      // Debug: List all canvas elements found
+      const allCanvases = termEl.querySelectorAll('canvas');
+      console.log(`📊 Found ${allCanvases.length} canvas elements:`, 
+        Array.from(allCanvases).map(c => ({ 
+          className: c.className, 
+          width: c.width, 
+          height: c.height,
+          hasData: !isCanvasBlank(c)
+        }))
+      );
+      
+      // Method 1: Prioritize canvas elements with actual content, WebGL first
+      const canvasElements = Array.from(allCanvases).map(canvas => {
+        const canvasEl = canvas as HTMLCanvasElement;
+        const isWebGL = canvasEl.getContext('webgl') || canvasEl.getContext('webgl2');
+        const hasData = !isCanvasBlank(canvasEl);
+        return {
+          canvas: canvasEl,
+          isWebGL,
+          hasData,
+          priority: isWebGL && hasData ? 1 : hasData ? 2 : isWebGL ? 3 : 4
+        };
+      }).sort((a, b) => a.priority - b.priority);
+      
+      console.log('📋 Canvas priority order:', canvasElements.map(c => 
+        `${c.isWebGL ? 'WebGL' : '2D'} (${c.canvas.className || 'unnamed'}) - hasData: ${c.hasData}, priority: ${c.priority}`
+      ));
+      
+      for (const {canvas: canvasEl, isWebGL} of canvasElements) {
+        const canvasType = isWebGL ? 'WebGL' : '2D';
+        const canvasDesc = `${canvasType} (${canvasEl.className || 'unnamed'})`;
+        
+        console.log(`🖼️ Attempting ${canvasDesc} capture...`);
+        
+        try {
+          let thumbnail: string | null = null;
+          
+          if (isWebGL) {
+            // Use WebGL-specific capture with timing
+            thumbnail = await captureWebGLCanvasWithTiming(canvasEl);
+          } else {
+            // Use regular canvas capture
+            thumbnail = captureRegularCanvas(canvasEl);
+          }
+          
+          if (thumbnail && !isDataURLBlank(thumbnail)) {
+            console.log(`✅ ${canvasDesc} capture successful!`);
+            return thumbnail;
+          }
+          console.log(`❌ ${canvasDesc} capture returned blank/null`);
+        } catch (error) {
+          console.warn(`❌ ${canvasDesc} capture failed:`, error);
+        }
+      }
+      
+      // Method 3: DOM screenshot with html2canvas
+      console.log('🌐 Attempting DOM screenshot with html2canvas...');
+      try {
+        const domThumbnail = await captureDOMScreenshot();
+        if (domThumbnail && !isDataURLBlank(domThumbnail)) {
+          console.log('✅ DOM screenshot successful');
+          return domThumbnail;
+        }
+        console.log('❌ DOM screenshot returned blank/null');
+      } catch (error) {
+        console.warn('❌ DOM screenshot failed:', error);
+      }
+      
+      // Method 4: Text-based fallback
+      console.log('📝 Using text-based fallback...');
+      const textPreview = createTextBasedPreview();
+      console.log('✅ Text-based preview created');
+      return textPreview;
+      
+    } catch (error) {
+      console.warn('❌ Fatal error in thumbnail capture:', error);
+      return createTextBasedPreview();
+    }
+  };
+  
+  function isCanvasBlank(canvas: HTMLCanvasElement): boolean {
+    try {
+      // Check if this is a WebGL canvas by testing for WebGL context
+      const isWebGL = canvas.getContext('webgl') || canvas.getContext('webgl2');
+      
+      if (isWebGL) {
+        // For WebGL canvases, use toDataURL method
+        try {
+          const dataURL = canvas.toDataURL();
+          return isDataURLBlank(dataURL);
+        } catch {
+          return true; // If toDataURL fails, assume blank
+        }
+      }
+      
+      // For 2D canvases, use pixel data checking
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return true;
+      
+      const imageData = ctx.getImageData(0, 0, Math.min(canvas.width, 50), Math.min(canvas.height, 50));
+      const data = imageData.data;
+      
+      // Check if all pixels are transparent or black (sample just a small area for performance)
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] !== 0 || data[i + 1] !== 0 || data[i + 2] !== 0 || data[i + 3] !== 0) {
+          return false; // Found non-black/transparent pixel
+        }
+      }
+      return true;
+    } catch {
+      return true; // Assume blank if we can't read
+    }
+  }
+  
+  function isDataURLBlank(dataURL: string): boolean {
+    if (!dataURL || dataURL === '') return true;
+    
+    // Quick check for very small data URLs (likely blank)
+    if (dataURL.length < 100) return true;
+    
+    // Check for common blank image patterns
+    const blankPatterns = [
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', // 1x1 transparent
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' // 1x1 black
+    ];
+    
+    for (const pattern of blankPatterns) {
+      if (dataURL.startsWith(pattern.substring(0, 50))) {
+        return true;
+      }
+    }
+    
+    // Check if the data URL is suspiciously small for the expected canvas size
+    // A 300x180 PNG should be much larger than 1000 bytes when base64 encoded
+    if (dataURL.length < 1000) {
+      console.log('🚨 Data URL suspiciously small:', dataURL.length, 'bytes');
+      return true;
+    }
+    
+    return false;
+  }
+  
+  async function captureWebGLCanvasWithTiming(canvas: HTMLCanvasElement): Promise<string | null> {
+    try {
+      console.log('🎮 WebGL canvas details:', {
+        width: canvas.width,
+        height: canvas.height,
+        context: canvas.getContext('webgl') ? 'webgl' : canvas.getContext('webgl2') ? 'webgl2' : 'none'
+      });
+      
+      // Try to force a WebGL render by requesting animation frame multiple times
+      for (let i = 0; i < 3; i++) {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+      
+      // Check if canvas has any content before trying to capture
+      if (isCanvasBlank(canvas)) {
+        console.log('❌ WebGL canvas appears blank before capture');
+        return null;
+      }
+      
+      return createScaledThumbnail(canvas, 300, 180);
+    } catch (error) {
+      console.warn('❌ WebGL timing capture failed:', error);
+      return null;
+    }
+  }
+  
+  function captureWebGLCanvas(canvas: HTMLCanvasElement): string | null {
+    try {
+      // For WebGL canvases, we need to ensure preserveDrawingBuffer was enabled
+      // and capture immediately after a frame is rendered
+      return createScaledThumbnail(canvas, 300, 180);
+    } catch (error) {
+      console.warn('WebGL canvas toDataURL failed:', error);
+      return null;
+    }
+  }
+  
+  function captureRegularCanvas(canvas: HTMLCanvasElement): string | null {
+    try {
+      // Regular 2D canvas capture should work reliably
+      return createScaledThumbnail(canvas, 300, 180);
+    } catch (error) {
+      console.warn('Regular canvas toDataURL failed:', error);
+      return null;
+    }
+  }
+  
+  function createScaledThumbnail(sourceCanvas: HTMLCanvasElement, width: number, height: number): string | null {
+    try {
+      // Create a smaller thumbnail canvas
+      const thumbnailCanvas = document.createElement('canvas');
+      const ctx = thumbnailCanvas.getContext('2d');
+      if (!ctx) return null;
+      
+      thumbnailCanvas.width = width;
+      thumbnailCanvas.height = height;
+      
+      // Scale and draw the source canvas to thumbnail size
+      ctx.drawImage(sourceCanvas, 0, 0, sourceCanvas.width, sourceCanvas.height, 0, 0, width, height);
+      
+      // Add a subtle border for consistency
+      ctx.strokeStyle = theme.cursor || '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0, 0, width, height);
+      
+      return thumbnailCanvas.toDataURL('image/png', 0.9);
+    } catch (error) {
+      console.warn('Failed to create scaled thumbnail:', error);
+      return null;
+    }
+  }
+  
+  async function captureDOMScreenshot(): Promise<string | null> {
+    try {
+      // Try to capture terminal DOM content
+      console.log('🌐 Attempting html2canvas capture...');
+      
+      // First try to find the terminal viewport/screen
+      const terminalViewport = termEl.querySelector('.xterm-viewport') as HTMLElement;
+      const terminalScreen = termEl.querySelector('.xterm-screen') as HTMLElement;
+      const terminalRows = termEl.querySelector('.xterm-rows') as HTMLElement;
+      
+      // Prefer the most specific element
+      const targetElement = terminalRows || terminalScreen || terminalViewport || termEl;
+      
+      console.log('🎯 Capturing element:', {
+        className: targetElement.className,
+        width: targetElement.offsetWidth,
+        height: targetElement.offsetHeight,
+        hasChildren: targetElement.children.length
+      });
+      
+      // Use html2canvas with optimized settings for terminal content
+      const html2canvas = (await import('html2canvas')).default;
+      
+      const canvas = await html2canvas(targetElement, {
+        backgroundColor: theme.background || '#000000',
+        scale: 1, // Use full scale first
+        useCORS: true,
+        allowTaint: true,
+        foreignObjectRendering: false, // Disable for better terminal compatibility
+        imageTimeout: 1000,
+        removeContainer: false,
+        logging: false,
+        onclone: (clonedDoc, element) => {
+          // Ensure the cloned element maintains visibility
+          element.style.display = 'block';
+          element.style.visibility = 'visible';
+          element.style.opacity = '1';
+          return element;
+        }
+      });
+      
+      console.log('📏 html2canvas result:', { width: canvas.width, height: canvas.height });
+      
+      // Create thumbnail from the captured canvas
+      const thumbnail = createScaledThumbnail(canvas, 300, 180);
+      if (thumbnail && !isDataURLBlank(thumbnail)) {
+        return thumbnail;
+      }
+      
+      console.log('❌ html2canvas produced blank result, trying manual DOM render...');
+      return captureDOMManualRender();
+      
+    } catch (error) {
+      console.warn('❌ html2canvas capture failed:', error);
+      return captureDOMManualRender();
+    }
+  }
+  
+  function captureDOMManualRender(): string | null {
+    try {
+      console.log('🎨 Attempting manual DOM render...');
+      
+      // Try to extract text content from terminal rows
+      const rowElements = termEl.querySelectorAll('.xterm-rows .xterm-row');
+      
+      console.log(`📝 Found ${rowElements.length} terminal rows`);
+      
+      if (rowElements.length === 0) {
+        console.log('❌ No terminal rows found, using fallback');
+        return captureDOMScreenshotFallback();
+      }
+      
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      
+      canvas.width = 300;
+      canvas.height = 180;
+      
+      // Fill background
+      ctx.fillStyle = theme.background || '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Set text properties
+      ctx.font = '9px monospace';
+      ctx.fillStyle = theme.foreground || '#ffffff';
+      
+      const lineHeight = 12;
+      let yOffset = lineHeight;
+      
+      // Render visible terminal content
+      const maxRows = Math.min(14, rowElements.length);
+      const startRow = Math.max(0, rowElements.length - maxRows);
+      
+      for (let i = startRow; i < rowElements.length && yOffset < canvas.height - 5; i++) {
+        const row = rowElements[i];
+        let text = '';
+        
+        // Extract text from the row, handling spans and other elements
+        const textContent = row.textContent || row.innerText || '';
+        text = textContent.trim();
+        
+        if (text) {
+          // Truncate if too long
+          if (text.length > 45) {
+            text = text.substring(0, 42) + '...';
+          }
+          
+          ctx.fillText(text, 5, yOffset);
+        }
+        
+        yOffset += lineHeight;
+      }
+      
+      // Add border
+      ctx.strokeStyle = theme.cursor || '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0, 0, canvas.width, canvas.height);
+      
+      console.log('✅ Manual DOM render complete');
+      return canvas.toDataURL('image/png', 0.9);
+      
+    } catch (error) {
+      console.warn('❌ Manual DOM render failed:', error);
+      return captureDOMScreenshotFallback();
+    }
+  }
+  
+  function captureDOMScreenshotFallback(): string | null {
+    try {
+      // Simplified DOM capture fallback
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      
+      canvas.width = 300;
+      canvas.height = 180;
+      
+      // Fill with terminal background
+      ctx.fillStyle = theme.background || '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Add some indication this is a fallback capture
+      ctx.fillStyle = theme.foreground || '#ffffff';
+      ctx.font = '12px monospace';
+      ctx.fillText('Terminal View', 10, 30);
+      ctx.fillText('(Fallback Capture)', 10, 50);
+      
+      // Add terminal border
+      ctx.strokeStyle = theme.cursor || '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0, 0, canvas.width, canvas.height);
+      
+      return canvas.toDataURL('image/png', 0.9);
+    } catch (error) {
+      console.warn('Fallback DOM screenshot failed:', error);
+      return null;
+    }
+  }
+  
+  function createTextBasedPreview(): string | null {
+    try {
+      // Fallback to the original text-based approach
+      const buffer = term!.buffer.active;
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (!ctx) return null;
@@ -513,10 +898,10 @@ ${fullContext}`;
       // Return as data URL
       return canvas.toDataURL('image/png', 0.9);
     } catch (error) {
-      console.warn('Failed to capture terminal thumbnail:', error);
+      console.warn('Failed to create text-based preview:', error);
       return null;
     }
-  };
+  }
 
   $: if (term) {
     term.resize(cols, rows);
@@ -628,7 +1013,8 @@ ${fullContext}`;
     // to ~16 concurrent contexts. Beyond this limit, older contexts are destroyed,
     // causing terminals to become unrenderable (upset emoticon).
     // The 14-terminal limit in Session.svelte prevents this issue.
-    term.loadAddon(new WebglAddon());
+    // Enable preserveDrawingBuffer to allow screenshot capture of WebGL canvas
+    term.loadAddon(new WebglAddon(true)); // preserveDrawingBuffer: true
     term.loadAddon(new ImageAddon({ enableSizeReports: false }));
 
     term.open(termEl);

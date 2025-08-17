@@ -558,7 +558,7 @@
   }
 
   // Global keyboard shortcuts
-  function handleGlobalKeydown(event: KeyboardEvent) {
+  async function handleGlobalKeydown(event: KeyboardEvent) {
     const isMac = navigator.platform.startsWith('Mac');
     
     // Use Ctrl+` (or Cmd+` on Mac) for terminal selector
@@ -571,15 +571,15 @@
       // Only open if we have terminals
       if (shells.length > 0) {
         // Capture thumbnails before showing selector
-        captureTerminalThumbnails();
+        await captureTerminalThumbnails();
         showTerminalSelector = true;
       }
     }
   }
 
-  function handleResize() {
+  async function handleResize() {
     if (showTerminalSelector) {
-      captureTerminalThumbnails();
+      await captureTerminalThumbnails();
     }
   }
 
@@ -597,11 +597,16 @@
   }
   
   // Capture terminal thumbnails when opening selector
-  function captureTerminalThumbnails() {
+  async function captureTerminalThumbnails() {
     for (const [id] of shells) {
       const getter = thumbnailGetters[id];
       if (getter) {
-        terminalThumbnails[id] = getter();
+        try {
+          terminalThumbnails[id] = await getter();
+        } catch (error) {
+          console.warn(`Failed to capture thumbnail for terminal ${id}:`, error);
+          terminalThumbnails[id] = null;
+        }
       }
     }
   }
@@ -658,8 +663,8 @@
         on:zoomOut={handleZoomOut}
         on:zoomReset={handleZoomReset}
         on:autoArrange={handleAutoArrange}
-        on:terminalSelector={() => {
-          captureTerminalThumbnails();
+        on:terminalSelector={async () => {
+          await captureTerminalThumbnails();
           showTerminalSelector = true;
         }}
       />
