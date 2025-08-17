@@ -137,8 +137,8 @@
   const termWrappers: Record<number, HTMLDivElement> = {};
   const termElements: Record<number, HTMLDivElement> = {};
   const terminalTitles: Record<number, string> = {}; // Track terminal titles
-  const terminalThumbnails: Record<number, string | null> = {}; // Track terminal thumbnails
-  const thumbnailGetters: Record<number, () => string | null> = {}; // Terminal thumbnail getter functions
+  const terminalThumbnails: Record<number, {small: string | null, large: string | null}> = {}; // Track terminal thumbnails
+  const thumbnailGetters: Record<number, () => Promise<{small: string | null, large: string | null}>> = {}; // Terminal thumbnail getter functions
   const chunknums: Record<number, number> = {};
   const locks: Record<number, any> = {};
   let userId = 0;
@@ -605,7 +605,7 @@
           terminalThumbnails[id] = await getter();
         } catch (error) {
           console.warn(`Failed to capture thumbnail for terminal ${id}:`, error);
-          terminalThumbnails[id] = null;
+          terminalThumbnails[id] = {small: null, large: null};
         }
       }
     }
@@ -768,7 +768,7 @@
           rows={ws.rows}
           cols={ws.cols}
           bind:write={writers[id]}
-          bind:getThumbnail={thumbnailGetters[id]}
+          bind:getThumbnails={thumbnailGetters[id]}
           bind:termEl={termElements[id]}
           on:data={({ detail: data }) =>
             hasWriteAccess && handleInput(id, data)}

@@ -71,7 +71,8 @@
 
   export let rows: number, cols: number;
   export let write: (data: string) => void; // bound function prop
-  export let getThumbnail: () => string | null = () => null; // bound function prop
+  export let getThumbnail: () => Promise<string | null> = async () => null; // bound function prop
+  export let getThumbnails: () => Promise<{small: string | null, large: string | null}> = async () => ({small: null, large: null}); // bound function prop
 
   export let termEl: HTMLDivElement = null as any; // suppress "missing prop" warning
   let term: Terminal | null = null;
@@ -557,6 +558,117 @@ ${fullContext}`;
     }
   };
   
+  getThumbnails = async () => {
+    if (!term || !termEl) return {small: null, large: null};
+    
+    console.log('🖼️ Creating multiple thumbnail sizes...');
+    
+    try {
+      // Get the best quality source
+      let sourceDataURL: string | null = null;
+      
+      // Try canvas capture first
+      const canvasElements = Array.from(termEl.querySelectorAll('canvas')).map(canvas => {
+        const canvasEl = canvas as HTMLCanvasElement;
+        const isWebGL = canvasEl.getContext('webgl') || canvasEl.getContext('webgl2');
+        const hasData = !isCanvasBlank(canvasEl);
+        return {
+          canvas: canvasEl,
+          isWebGL,
+          hasData,
+          priority: isWebGL && hasData ? 1 : hasData ? 2 : isWebGL ? 3 : 4
+        };
+      }).sort((a, b) => a.priority - b.priority);
+      
+      for (const {canvas: canvasEl, isWebGL} of canvasElements) {
+        try {
+          if (isWebGL) {
+            sourceDataURL = await captureWebGLCanvasWithTiming(canvasEl);
+          } else {
+            sourceDataURL = captureRegularCanvas(canvasEl);
+          }
+          
+          if (sourceDataURL && !isDataURLBlank(sourceDataURL)) {
+            break; // Found good source
+          }
+        } catch (error) {
+          console.warn('Canvas capture failed:', error);
+        }
+      }
+      
+      if (!sourceDataURL) {
+        // Fallback to text-based
+        const textPreview = createTextBasedPreview();
+        return {
+          small: textPreview,
+          large: textPreview
+        };
+      }
+      
+      // Create image from source to scale from
+      const sourceImg = new Image();
+      await new Promise((resolve, reject) => {
+        sourceImg.onload = resolve;
+        sourceImg.onerror = reject;
+        sourceImg.src = sourceDataURL;
+      });
+      
+      // Create small thumbnail (for list)
+      const smallThumbnail = createScaledThumbnailFromImage(sourceImg, 80, 48);
+      
+      // Create large thumbnail (for preview)
+      const largeThumbnail = createScaledThumbnailFromImage(sourceImg, 600, 360);
+      
+      return {
+        small: smallThumbnail,
+        large: largeThumbnail
+      };
+      
+    } catch (error) {
+      console.warn('Failed to create thumbnails:', error);
+      const fallback = createTextBasedPreview();
+      return {
+        small: fallback,
+        large: fallback
+      };
+    }
+  };
+  
+  function createScaledThumbnailFromImage(sourceImg: HTMLImageElement, width: number, height: number): string | null {
+    try {
+      const devicePixelRatio = window.devicePixelRatio || 1;
+      const scaledWidth = width * devicePixelRatio;
+      const scaledHeight = height * devicePixelRatio;
+      
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      
+      canvas.width = scaledWidth;
+      canvas.height = scaledHeight;
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      
+      // High quality scaling
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.scale(devicePixelRatio, devicePixelRatio);
+      
+      // Draw scaled image
+      ctx.drawImage(sourceImg, 0, 0, width, height);
+      
+      // Add border
+      ctx.strokeStyle = theme.cursor || '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0, 0, width, height);
+      
+      return canvas.toDataURL('image/png', 1.0);
+    } catch (error) {
+      console.warn('Failed to scale image:', error);
+      return null;
+    }
+  }
+  
   function isCanvasBlank(canvas: HTMLCanvasElement): boolean {
     try {
       // Check if this is a WebGL canvas by testing for WebGL context
@@ -668,15 +780,31 @@ ${fullContext}`;
   
   function createScaledThumbnail(sourceCanvas: HTMLCanvasElement, width: number, height: number): string | null {
     try {
-      // Create a smaller thumbnail canvas
+      // Create a higher quality thumbnail canvas with device pixel ratio
+      const devicePixelRatio = window.devicePixelRatio || 1;
+      const scaledWidth = width * devicePixelRatio;
+      const scaledHeight = height * devicePixelRatio;
+      
       const thumbnailCanvas = document.createElement('canvas');
       const ctx = thumbnailCanvas.getContext('2d');
       if (!ctx) return null;
       
-      thumbnailCanvas.width = width;
-      thumbnailCanvas.height = height;
+      // Set actual canvas size (higher res for quality)
+      thumbnailCanvas.width = scaledWidth;
+      thumbnailCanvas.height = scaledHeight;
       
-      // Scale and draw the source canvas to thumbnail size
+      // Scale back down for CSS display
+      thumbnailCanvas.style.width = width + 'px';
+      thumbnailCanvas.style.height = height + 'px';
+      
+      // Enable high-quality image smoothing
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      
+      // Scale the context to match device pixel ratio
+      ctx.scale(devicePixelRatio, devicePixelRatio);
+      
+      // Draw with high quality scaling
       ctx.drawImage(sourceCanvas, 0, 0, sourceCanvas.width, sourceCanvas.height, 0, 0, width, height);
       
       // Add a subtle border for consistency
@@ -684,7 +812,8 @@ ${fullContext}`;
       ctx.lineWidth = 1;
       ctx.strokeRect(0, 0, width, height);
       
-      return thumbnailCanvas.toDataURL('image/png', 0.9);
+      // Use maximum quality for PNG output
+      return thumbnailCanvas.toDataURL('image/png', 1.0);
     } catch (error) {
       console.warn('Failed to create scaled thumbnail:', error);
       return null;

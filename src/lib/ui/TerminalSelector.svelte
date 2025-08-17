@@ -3,12 +3,11 @@
   import { createEventDispatcher, onMount, onDestroy } from "svelte";
   import { fade } from "svelte/transition";
   import type { WsWinsize } from "$lib/protocol";
-  import TerminalCard from "./TerminalCard.svelte";
   
   export let shells: [number, WsWinsize][] = [];
   export let focusedTerminals: number[] = [];
   export let terminalTitles: Record<number, string> = {};
-  export let terminalThumbnails: Record<number, string | null> = {};
+  export let terminalThumbnails: Record<number, {small: string | null, large: string | null}> = {};
   
   const dispatch = createEventDispatcher<{
     select: { id: number, winsize: WsWinsize };
@@ -17,6 +16,7 @@
   
   let selectedIndex = 0;
   let hoveredIndex: number | null = null;
+  let previewTerminal: { id: number, winsize: WsWinsize, title: string, thumbnails: {small: string | null, large: string | null} } | null = null;
   
   // Find initially selected terminal (first focused or first in list)
   $: {
@@ -26,6 +26,23 @@
         selectedIndex = focusedIndex;
       }
     }
+  }
+  
+  // Update preview when selection changes
+  $: {
+    if (shells.length > 0 && (selectedIndex >= 0 && selectedIndex < shells.length)) {
+      const [id, winsize] = shells[selectedIndex];
+      updatePreview(id, winsize);
+    }
+  }
+  
+  function updatePreview(id: number, winsize: WsWinsize) {
+    previewTerminal = {
+      id,
+      winsize,
+      title: terminalTitles[id] || `Terminal ${id}`,
+      thumbnails: terminalThumbnails[id] || {small: null, large: null}
+    };
   }
   
   function handleKeydown(event: KeyboardEvent) {
@@ -49,32 +66,21 @@
       return;
     }
     
-    // Grid navigation with arrow keys (4 columns)
-    const cols = 4;
-    const rows = Math.ceil(shells.length / cols);
-    const currentRow = Math.floor(selectedIndex / cols);
-    const currentCol = selectedIndex % cols;
-    
+    // List navigation with arrow keys (vertical)
     switch (event.key) {
       case 'ArrowUp':
-        if (currentRow > 0) {
-          selectedIndex = Math.max(0, selectedIndex - cols);
-        }
-        break;
-      case 'ArrowDown':
-        if (currentRow < rows - 1) {
-          selectedIndex = Math.min(shells.length - 1, selectedIndex + cols);
-        }
-        break;
-      case 'ArrowLeft':
         if (selectedIndex > 0) {
           selectedIndex--;
         }
         break;
-      case 'ArrowRight':
+      case 'ArrowDown':
         if (selectedIndex < shells.length - 1) {
           selectedIndex++;
         }
+        break;
+      case 'ArrowLeft':
+      case 'ArrowRight':
+        // No horizontal navigation in list mode
         break;
     }
     
@@ -131,18 +137,34 @@
     }
   }
   
-  function handleCardClick(index: number) {
+  function handleItemClick(index: number) {
     selectedIndex = index;
     selectTerminal();
   }
   
   function handleMouseEnter(index: number) {
     hoveredIndex = index;
-    selectedIndex = index;
+    // Update preview on hover but don't change selection
+    const [id, winsize] = shells[index];
+    updatePreview(id, winsize);
   }
   
   function handleMouseLeave() {
     hoveredIndex = null;
+    // Restore preview to selected item
+    if (selectedIndex >= 0 && selectedIndex < shells.length) {
+      const [id, winsize] = shells[selectedIndex];
+      updatePreview(id, winsize);
+    }
+  }
+  
+  // Get keyboard shortcut key for this terminal
+  function getShortcutKey(idx: number): string {
+    if (idx < 9) return (idx + 1).toString();
+    if (idx === 9) return "0";
+    const extraKeys = ["Q", "W", "E", "R"];
+    if (idx < 14) return extraKeys[idx - 10];
+    return "";
   }
   
   function handleBackdropClick(event: MouseEvent) {
@@ -180,35 +202,103 @@
       </div>
     </div>
     
-    <!-- Terminal grid -->
-    <div class="selector-grid">
-      {#each shells as [id, winsize], index (id)}
-        <TerminalCard
-          {id}
-          {winsize}
-          {index}
-          title={terminalTitles[id] || `Terminal ${id}`}
-          thumbnail={terminalThumbnails[id]}
-          selected={selectedIndex === index}
-          focused={focusedTerminals.includes(id)}
-          on:click={() => handleCardClick(index)}
-          on:mouseenter={() => handleMouseEnter(index)}
-          on:mouseleave={handleMouseLeave}
-        />
-      {/each}
-      
-      <!-- Empty slots for visual balance -->
-      {#if shells.length % 4 !== 0}
-        {#each Array(4 - (shells.length % 4)) as _, i}
-          <div class="empty-slot"></div>
+    <!-- Two-panel layout -->
+    <div class="selector-content">
+      <!-- Left panel: Terminal list -->
+      <div class="terminal-list">
+        {#each shells as [id, winsize], index (id)}
+          <!-- svelte-ignore a11y-click-events-have-key-events -->
+          <!-- svelte-ignore a11y-no-static-element-interactions -->
+          <div 
+            class="terminal-item"
+            class:selected={selectedIndex === index}
+            class:hovered={hoveredIndex === index}
+            class:focused={focusedTerminals.includes(id)}
+            on:click={() => handleItemClick(index)}
+            on:mouseenter={() => handleMouseEnter(index)}
+            on:mouseleave={handleMouseLeave}
+          >
+            <!-- Terminal number badge -->
+            {#if getShortcutKey(index)}
+              <div class="terminal-badge">
+                {getShortcutKey(index)}
+              </div>
+            {/if}
+            
+            <!-- Small thumbnail -->
+            <div class="small-thumbnail">
+              {#if terminalThumbnails[id]?.small}
+                <img 
+                  src={terminalThumbnails[id].small} 
+                  alt="Terminal preview" 
+                  class="small-thumbnail-image"
+                />
+              {:else}
+                <div class="small-thumbnail-placeholder">
+                  <div class="small-placeholder-icon">⌨️</div>
+                </div>
+              {/if}
+            </div>
+            
+            <!-- Terminal info -->
+            <div class="terminal-info">
+              <div class="terminal-title">
+                {terminalTitles[id] || `Terminal ${id}`}
+              </div>
+              <div class="terminal-meta">
+                {winsize.cols}×{winsize.rows}
+              </div>
+            </div>
+            
+            <!-- Status indicator -->
+            <div class="terminal-status">
+              {#if focusedTerminals.includes(id)}
+                <span class="status-dot active" title="Active"></span>
+              {:else}
+                <span class="status-dot idle" title="Idle"></span>
+              {/if}
+            </div>
+          </div>
         {/each}
-      {/if}
+      </div>
+      
+      <!-- Right panel: Large preview -->
+      <div class="preview-panel">
+        {#if previewTerminal}
+          <div class="preview-header">
+            <h3 class="preview-title">{previewTerminal.title}</h3>
+            <div class="preview-meta">
+              Terminal {previewTerminal.id} • {previewTerminal.winsize.cols}×{previewTerminal.winsize.rows}
+            </div>
+          </div>
+          
+          <div class="preview-content">
+            {#if previewTerminal.thumbnails.large}
+              <img 
+                src={previewTerminal.thumbnails.large} 
+                alt="Terminal preview" 
+                class="preview-image"
+              />
+            {:else}
+              <div class="preview-placeholder">
+                <div class="placeholder-icon">⌨️</div>
+                <div class="placeholder-text">Terminal Preview</div>
+              </div>
+            {/if}
+          </div>
+        {:else}
+          <div class="preview-empty">
+            <div class="empty-icon">👀</div>
+            <div class="empty-text">Hover over a terminal to see preview</div>
+          </div>
+        {/if}
+      </div>
     </div>
     
     <!-- Footer with keyboard shortcuts -->
     <div class="selector-footer">
       <div class="shortcut-group">
-        <kbd>Tab</kbd>/<kbd>↑↓←→</kbd> Navigate
+        <kbd>Tab</kbd>/<kbd>↑↓</kbd> Navigate
       </div>
       <div class="shortcut-group">
         <kbd>Enter</kbd> Select
@@ -248,30 +338,168 @@
     @apply text-sm text-theme-fg-secondary mt-1;
   }
   
-  .selector-grid {
-    @apply grid grid-cols-4 gap-4 p-6 overflow-y-auto flex-1;
+  /* Two-panel layout */
+  .selector-content {
+    @apply flex flex-1 overflow-hidden;
   }
   
+  /* Left panel: Terminal list */
+  .terminal-list {
+    @apply w-2/5 border-r border-theme-border overflow-y-auto;
+    @apply flex flex-col;
+  }
+  
+  .terminal-item {
+    @apply relative flex items-center gap-3 p-4 border-b border-theme-border;
+    @apply cursor-pointer transition-all duration-150;
+    @apply hover:bg-theme-bg-secondary;
+  }
+  
+  .terminal-item.selected {
+    @apply bg-blue-500 bg-opacity-10 border-l-4 border-l-blue-500;
+  }
+  
+  .terminal-item.hovered {
+    @apply bg-theme-bg-tertiary;
+  }
+  
+  .terminal-item.focused {
+    background: rgba(var(--color-success), 0.05);
+  }
+  
+  .terminal-badge {
+    @apply flex-shrink-0 bg-blue-500 text-white;
+    @apply rounded-full w-6 h-6 flex items-center justify-center;
+    @apply font-bold text-xs;
+  }
+  
+  /* Small thumbnails in list */
+  .small-thumbnail {
+    @apply flex-shrink-0 w-16 h-10 rounded border border-theme-border;
+    @apply overflow-hidden bg-black;
+  }
+  
+  .small-thumbnail-image {
+    @apply w-full h-full object-cover;
+    /* High quality image rendering */
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+    image-rendering: optimizeQuality;
+    image-rendering: high-quality;
+  }
+  
+  .small-thumbnail-placeholder {
+    @apply w-full h-full flex items-center justify-center;
+    @apply bg-theme-bg-tertiary;
+  }
+  
+  .small-placeholder-icon {
+    @apply text-xs opacity-50;
+  }
+  
+  .terminal-info {
+    @apply flex-1 min-w-0;
+  }
+  
+  .terminal-title {
+    @apply font-mono text-sm text-theme-fg;
+    @apply overflow-hidden text-ellipsis whitespace-nowrap;
+  }
+  
+  .terminal-meta {
+    @apply font-mono text-xs text-theme-fg-secondary mt-1;
+  }
+  
+  .terminal-status {
+    @apply flex-shrink-0;
+  }
+  
+  .status-dot {
+    @apply w-2 h-2 rounded-full;
+  }
+  
+  .status-dot.active {
+    @apply bg-green-500;
+    animation: pulse 2s infinite;
+  }
+  
+  .status-dot.idle {
+    @apply bg-gray-500;
+  }
+  
+  /* Right panel: Large preview */
+  .preview-panel {
+    @apply flex-1 flex flex-col p-6;
+    @apply bg-theme-bg-secondary;
+  }
+  
+  .preview-header {
+    @apply mb-4;
+  }
+  
+  .preview-title {
+    @apply text-lg font-semibold text-theme-fg;
+    @apply font-mono;
+  }
+  
+  .preview-meta {
+    @apply text-sm text-theme-fg-secondary mt-1;
+    @apply font-mono;
+  }
+  
+  .preview-content {
+    @apply flex-1 flex items-center justify-center;
+    @apply rounded-lg border-2 border-dashed border-theme-border;
+    @apply overflow-hidden;
+  }
+  
+  .preview-image {
+    @apply max-w-full max-h-full object-contain;
+    @apply rounded-lg;
+    /* High quality image rendering for preview */
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+    image-rendering: optimizeQuality;
+    image-rendering: high-quality;
+  }
+  
+  .preview-placeholder,
+  .preview-empty {
+    @apply flex flex-col items-center justify-center;
+    @apply text-theme-fg-secondary;
+  }
+  
+  .placeholder-icon,
+  .empty-icon {
+    @apply text-4xl mb-2;
+  }
+  
+  .placeholder-text,
+  .empty-text {
+    @apply text-sm font-medium;
+  }
+  
+  /* Responsive design */
   @media (max-width: 1024px) {
-    .selector-grid {
-      @apply grid-cols-3;
+    .terminal-list {
+      @apply w-1/2;
     }
   }
   
   @media (max-width: 768px) {
-    .selector-grid {
-      @apply grid-cols-2;
+    .selector-content {
+      @apply flex-col;
     }
-  }
-  
-  @media (max-width: 480px) {
-    .selector-grid {
-      @apply grid-cols-1;
+    
+    .terminal-list {
+      @apply w-full max-h-60 border-r-0 border-b;
     }
-  }
-  
-  .empty-slot {
-    @apply invisible;
+    
+    .preview-panel {
+      @apply p-4;
+    }
   }
   
   .selector-footer {
@@ -287,5 +515,14 @@
     @apply px-2 py-1 border border-theme-border rounded;
     @apply font-mono text-xs text-theme-fg;
     background: rgb(var(--color-background-secondary));
+  }
+  
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
   }
 </style>
