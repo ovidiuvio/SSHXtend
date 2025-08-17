@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
 	"sshx-go/pkg/encrypt"
@@ -208,7 +210,17 @@ func (c *Controller) tryChannel() error {
 
 	// Connect to server
 	target := parseGRPCTarget(c.origin)
-	conn, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	
+	// Use TLS for HTTPS origins, insecure for others
+	var opts []grpc.DialOption
+	if strings.HasPrefix(c.origin, "https://") {
+		// Use system's root CA set for TLS
+		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
+	} else {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+	
+	conn, err := grpc.Dial(target, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
@@ -517,7 +529,17 @@ func (c *Controller) Close() error {
 	defer c.cancel()
 
 	target := parseGRPCTarget(c.origin)
-	conn, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	
+	// Use TLS for HTTPS origins, insecure for others
+	var opts []grpc.DialOption
+	if strings.HasPrefix(c.origin, "https://") {
+		// Use system's root CA set for TLS
+		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
+	} else {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+	
+	conn, err := grpc.Dial(target, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to connect for close: %w", err)
 	}
@@ -545,7 +567,16 @@ func connectGRPC(origin string) (proto.SshxServiceClient, error) {
 	// Parse the origin URL to extract host:port for gRPC
 	target := parseGRPCTarget(origin)
 	
-	conn, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// Use TLS for HTTPS origins, insecure for others
+	var opts []grpc.DialOption
+	if strings.HasPrefix(origin, "https://") {
+		// Use system's root CA set for TLS
+		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
+	} else {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+	
+	conn, err := grpc.Dial(target, opts...)
 	if err != nil {
 		return nil, err
 	}
