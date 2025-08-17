@@ -13,6 +13,7 @@
     ZoomInIcon,
     ZoomOutIcon,
     GridIcon,
+    LayersIcon,
   } from "svelte-feather-icons";
 
   import logo from "$lib/assets/logo.svg";
@@ -35,6 +36,7 @@
     zoomOut: void;
     zoomReset: void;
     autoArrange: void;
+    terminalSelector: void;
   }>();
 
   $: zoomPercent = Math.round(zoomLevel * 100);
@@ -87,6 +89,14 @@
           : "Create new terminal"}
       >
         <PlusCircleIcon strokeWidth={1.5} class="p-0.5" />
+      </button>
+      <button
+        class="icon-button"
+        on:click={() => dispatch("terminalSelector")}
+        disabled={!connected}
+        title="Quick terminal selector (Ctrl+` or Cmd+`)"
+      >
+        <LayersIcon strokeWidth={1.5} class="p-0.5" />
       </button>
       <button
         class="icon-button"

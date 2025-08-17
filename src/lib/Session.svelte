@@ -24,6 +24,7 @@
   import XTerm from "./ui/XTerm.svelte";
   import Avatars from "./ui/Avatars.svelte";
   import LiveCursor from "./ui/LiveCursor.svelte";
+  import TerminalSelector from "./ui/TerminalSelector.svelte";
   import { slide } from "./action/slide";
   import { TouchZoom, INITIAL_ZOOM } from "./action/touchZoom";
   import { arrangeNewTerminal, autoArrangeTerminals } from "./arrange";
@@ -62,6 +63,7 @@
   let showChat = false; // @hmr:keep
   let settingsOpen = false; // @hmr:keep
   let showNetworkInfo = false; // @hmr:keep
+  let showTerminalSelector = false; // @hmr:keep
   let toolbarPinned = false; // @hmr:keep
   let toolbarVisible = true;
   let toolbarHoverTimeout: number | null = null;
@@ -134,6 +136,9 @@
   const writers: Record<number, (data: string) => void> = {};
   const termWrappers: Record<number, HTMLDivElement> = {};
   const termElements: Record<number, HTMLDivElement> = {};
+  const terminalTitles: Record<number, string> = {}; // Track terminal titles
+  const terminalThumbnails: Record<number, string | null> = {}; // Track terminal thumbnails
+  const thumbnailGetters: Record<number, () => string | null> = {}; // Terminal thumbnail getter functions
   const chunknums: Record<number, number> = {};
   const locks: Record<number, any> = {};
   let userId = 0;
@@ -515,6 +520,91 @@
       touchZoom.moveTo([avgX + avgWidth / 2, avgY + avgHeight / 2], 1);
     }
   }
+
+  function handleCenterTerminal(id: number, winsize?: WsWinsize) {
+    const shell = shells.find(([shellId]) => shellId === id);
+    if (!shell) return;
+
+    const [shellId, currentWinsize] = shell;
+    const ws = winsize || currentWinsize;
+    const wrapper = termWrappers[id];
+
+    // Get actual terminal dimensions
+    const width = wrapper ? wrapper.clientWidth : 752;
+    const height = wrapper ? wrapper.clientHeight : 515;
+
+    // Center on the terminal's visual center
+    const terminalCenterX = ws.x + width / 2 - CONSTANT_OFFSET_LEFT;
+    const terminalCenterY = ws.y + height / 2 - CONSTANT_OFFSET_TOP;
+
+    touchZoom.moveTo([terminalCenterX, terminalCenterY], INITIAL_ZOOM);
+
+    // Focus the terminal after centering
+    setTimeout(() => {
+      const termElement = termElements[id];
+      if (termElement) {
+        const textarea =
+          termElement.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement;
+        if (textarea) {
+          textarea.focus();
+        }
+      }
+    }, 300);
+  }
+
+  function handleTerminalSelectorSelect(event: CustomEvent<{ id: number, winsize: WsWinsize }>) {
+    handleCenterTerminal(event.detail.id, event.detail.winsize);
+    showTerminalSelector = false;
+  }
+
+  // Global keyboard shortcuts
+  function handleGlobalKeydown(event: KeyboardEvent) {
+    const isMac = navigator.platform.startsWith('Mac');
+    
+    // Use Ctrl+` (or Cmd+` on Mac) for terminal selector
+    if (event.key === '`' && 
+        ((isMac && event.metaKey) || (!isMac && event.ctrlKey)) && 
+        !event.shiftKey && !event.altKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      
+      // Only open if we have terminals
+      if (shells.length > 0) {
+        // Capture thumbnails before showing selector
+        captureTerminalThumbnails();
+        showTerminalSelector = true;
+      }
+    }
+  }
+
+  function handleResize() {
+    if (showTerminalSelector) {
+      captureTerminalThumbnails();
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener('keydown', handleGlobalKeydown);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeydown);
+      window.removeEventListener('resize', handleResize);
+    };
+  });
+  // Track terminal title changes
+  function handleTerminalTitleChange(id: number, title: string) {
+    terminalTitles[id] = title;
+  }
+  
+  // Capture terminal thumbnails when opening selector
+  function captureTerminalThumbnails() {
+    for (const [id] of shells) {
+      const getter = thumbnailGetters[id];
+      if (getter) {
+        terminalThumbnails[id] = getter();
+      }
+    }
+  }
 </script>
 
 <!-- Wheel handler stops native macOS Chrome zooming on pinch. -->
@@ -568,6 +658,10 @@
         on:zoomOut={handleZoomOut}
         on:zoomReset={handleZoomReset}
         on:autoArrange={handleAutoArrange}
+        on:terminalSelector={() => {
+          captureTerminalThumbnails();
+          showTerminalSelector = true;
+        }}
       />
     </div>
 
@@ -669,6 +763,7 @@
           rows={ws.rows}
           cols={ws.cols}
           bind:write={writers[id]}
+          bind:getThumbnail={thumbnailGetters[id]}
           bind:termEl={termElements[id]}
           on:data={({ detail: data }) =>
             hasWriteAccess && handleInput(id, data)}
@@ -707,6 +802,7 @@
           on:blur={() => {
             focused = focused.filter((i) => i !== id);
           }}
+          on:titleChange={({ detail: title }) => handleTerminalTitleChange(id, title)}
         />
 
         <!-- User avatars -->
@@ -755,4 +851,16 @@
       </div>
     {/each}
   </div>
+  
+  <!-- Terminal Selector Overlay -->
+  {#if showTerminalSelector}
+    <TerminalSelector
+      {shells}
+      focusedTerminals={focused}
+      {terminalTitles}
+      terminalThumbnails={terminalThumbnails}
+      on:select={handleTerminalSelectorSelect}
+      on:close={() => showTerminalSelector = false}
+    />
+  {/if}
 </main>

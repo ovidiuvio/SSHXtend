@@ -64,12 +64,14 @@
     startMove: MouseEvent;
     focus: void;
     blur: void;
+    titleChange: string;
   }>();
 
   const typeahead = new TypeAheadAddon();
 
   export let rows: number, cols: number;
   export let write: (data: string) => void; // bound function prop
+  export let getThumbnail: () => string | null = () => null; // bound function prop
 
   export let termEl: HTMLDivElement = null as any; // suppress "missing prop" warning
   let term: Terminal | null = null;
@@ -460,6 +462,61 @@ ${fullContext}`;
       term.write(data);
     }
   };
+  
+  getThumbnail = () => {
+    if (!term || !termEl) return null;
+    
+    try {
+      // Instead of capturing WebGL canvas (which often returns black),
+      // we'll create a text-based preview from the terminal buffer
+      const buffer = term.buffer.active;
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      
+      // Set thumbnail size
+      canvas.width = 300;
+      canvas.height = 180;
+      
+      // Fill background with terminal background color
+      ctx.fillStyle = theme.background || '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Set text properties
+      ctx.font = '10px monospace';
+      ctx.fillStyle = theme.foreground || '#ffffff';
+      
+      // Get visible lines from buffer (last 12 lines)
+      const lineHeight = 14;
+      const maxLines = Math.min(12, buffer.length);
+      const startLine = Math.max(0, buffer.cursorY - maxLines + 1);
+      
+      let yOffset = 10;
+      for (let i = startLine; i <= buffer.cursorY && i < buffer.length; i++) {
+        const line = buffer.getLine(i);
+        if (line) {
+          const text = line.translateToString(true);
+          // Truncate long lines
+          const truncated = text.length > 40 ? text.substring(0, 40) + '...' : text;
+          ctx.fillText(truncated, 5, yOffset);
+          yOffset += lineHeight;
+          
+          if (yOffset > canvas.height - 10) break;
+        }
+      }
+      
+      // Add a subtle border
+      ctx.strokeStyle = theme.cursor || '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0, 0, canvas.width, canvas.height);
+      
+      // Return as data URL
+      return canvas.toDataURL('image/png', 0.9);
+    } catch (error) {
+      console.warn('Failed to capture terminal thumbnail:', error);
+      return null;
+    }
+  };
 
   $: if (term) {
     term.resize(cols, rows);
@@ -579,6 +636,7 @@ ${fullContext}`;
     term.resize(cols, rows);
     term.onTitleChange((title) => {
       currentTitle = title;
+      dispatch('titleChange', title);
     });
 
     // Hack: We artificially disable scrolling when the terminal is not focused.
