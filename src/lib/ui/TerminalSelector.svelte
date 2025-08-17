@@ -452,17 +452,19 @@
     @apply flex-1 flex items-center justify-center;
     @apply rounded-lg border-2 border-dashed border-theme-border;
     @apply overflow-hidden;
+    /* Allow scrolling for very large native resolution images */
+    @apply overflow-auto;
   }
   
   .preview-image {
     @apply max-w-full max-h-full object-contain;
     @apply rounded-lg;
-    /* High quality image rendering for preview */
+    /* High quality image rendering for native resolution preview */
     image-rendering: -webkit-optimize-contrast;
-    image-rendering: -moz-crisp-edges;
-    image-rendering: crisp-edges;
     image-rendering: optimizeQuality;
     image-rendering: high-quality;
+    /* Allow browser to scale smoothly for native resolution */
+    image-rendering: auto;
   }
   
   .preview-placeholder,

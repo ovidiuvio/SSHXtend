@@ -616,8 +616,8 @@ ${fullContext}`;
       // Create small thumbnail (for list)
       const smallThumbnail = createScaledThumbnailFromImage(sourceImg, 80, 48);
       
-      // Create large thumbnail (for preview)
-      const largeThumbnail = createScaledThumbnailFromImage(sourceImg, 600, 360);
+      // Use native resolution for large thumbnail (best quality)
+      const largeThumbnail = sourceDataURL;
       
       return {
         small: smallThumbnail,
