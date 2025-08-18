@@ -46,14 +46,6 @@ struct Args {
     #[clap(long)]
     enable_readers: bool,
 
-    /// Optional custom session ID.
-    #[clap(long)]
-    session_id: Option<String>,
-
-    /// Optional encryption key.
-    #[clap(long)]
-    secret: Option<String>,
-
     /// Service management (install|uninstall|status|start|stop)
     #[clap(long, value_parser = ["install", "uninstall", "status", "start", "stop"])]
     service: Option<String>,
@@ -222,8 +214,6 @@ async fn start(args: Args) -> Result<()> {
         &name,
         runner,
         args.enable_readers,
-        args.session_id,
-        args.secret,
     )
     .await?;
 

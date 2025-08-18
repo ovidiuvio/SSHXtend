@@ -17,11 +17,11 @@
 
 This fork extends the original sshx with enterprise-grade features and enhanced usability:
 
-### 🔗 **Static URLs & Custom Sessions**
-Create predictable, bookmarkable session URLs with custom session IDs and secrets:
+### 🔗 **Secure Random Sessions**
+Automatically generates cryptographically secure session URLs for maximum security:
 ```bash
-sshx --server http://localhost:8051 --secret "myteam-secret" --session-id "dev-env"
-# ➜ Link: http://localhost:8051/s/dev-env#myteam-secret
+sshx --server http://localhost:8051
+# ➜ Link: http://localhost:8051/s/kM9pL2nQ7v#R4sT6wXyZ1aB3cD5e
 ```
 
 ### 📊 **Multi-Dashboard System**
@@ -191,7 +191,7 @@ cargo install --path crates/sshx-server
 
 **Why incompatible?**
 - Enhanced protocol features (dashboard registration, settings sync)
-- Additional command-line arguments (`--dashboard`, `--session-id`, `--service`)
+- Additional command-line arguments (`--dashboard`, `--service`)
 - Modified server endpoints and authentication
 - Extended feature set not present in original client
 
@@ -211,11 +211,11 @@ cargo install --path crates/sshx-server
 # 4. AI maintains full context of the debugging session
 ```
 
-### Custom Session for Teams
+### Secure Team Collaboration
 ```bash
-sshx --session-id "team-standup" --secret "standup-2024"
-# Always creates the same shareable URL
-# Perfect for recurring team collaboration
+sshx --server http://localhost:8051
+# Generates unique secure URL for team sharing
+# Enhanced security with random session IDs and encryption keys
 ```
 
 ### Monitored Production Session
@@ -224,7 +224,7 @@ sshx --session-id "team-standup" --secret "standup-2024"
 sshx-server --dashboard-key "production-monitor-2024"
 
 # Connect client with dashboard registration
-sshx --dashboard --session-id "prod-maintenance" --server http://your-server:8051
+sshx --dashboard --server http://your-server:8051
 # Session appears in dashboard for real-time monitoring
 ```
 
@@ -234,12 +234,9 @@ sshx --dashboard --session-id "prod-maintenance" --server http://your-server:805
 export SSHX_DASHBOARD_KEY="$(openssl rand -base64 32)"
 sshx-server --listen 0.0.0.0:8051
 
-# Client with custom session and monitoring
-sshx --dashboard \
-     --session-id "dev-team-$(date +%Y%m%d)" \
-     --secret "team-secret-key" \
-     --server https://your-domain.com
-# Combines static URLs + dashboard monitoring + security
+# Client with dashboard monitoring
+sshx --dashboard --server https://your-domain.com
+# Automatically generates secure URLs with dashboard monitoring
 ```
 
 ## ⌨️ Keyboard Shortcuts
@@ -401,7 +398,7 @@ ufw allow from 192.168.1.0/24 to any port 8051  # Only allow internal network
 **Additional Recommendations:**
 - **Network Isolation**: Deploy on internal networks only when possible
 - **VPN Access**: Require VPN connection for external access
-- **Strong Session Secrets**: Use long, random session secrets (>20 characters)
+- **Secure Session Management**: All sessions use cryptographically secure random IDs and encryption keys
 - **Regular Key Rotation**: Change dashboard keys periodically
 - **Access Logging**: Monitor server logs for unauthorized access attempts
 - **Principle of Least Privilege**: Only share session URLs with trusted users
@@ -416,7 +413,7 @@ ufw allow from 192.168.1.0/24 to any port 8051  # Only allow internal network
 - **No Rate Limiting**: No built-in protection against brute force attacks
 
 **Mitigation Strategies:**
-- Use strong, unique session secrets for sensitive work
+- All sessions automatically use cryptographically secure random IDs and encryption keys
 - Regularly rotate dashboard keys in high-security environments
 - Consider implementing additional authentication layers (reverse proxy auth)
 - Monitor dashboard access patterns for suspicious activity
