@@ -97,3 +97,153 @@ pub enum WsClient {
     /// Send a ping to the server, for latency measurement.
     Ping(u64),
 }
+
+/// CLI WebSocket request message with correlation ID.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CliRequest {
+    /// Unique request ID for correlation.
+    pub id: String,
+    /// The actual request message.
+    pub message: CliMessage,
+}
+
+/// CLI WebSocket response message with correlation ID.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CliResponse {
+    /// Request ID this response corresponds to.
+    pub id: String,
+    /// The actual response message.
+    pub message: CliResponseMessage,
+}
+
+/// CLI-specific request message types.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub enum CliMessage {
+    /// Request to open a new session.
+    OpenSession {
+        /// The origin hostname for the session.
+        origin: String,
+        /// Encrypted zeros block for authentication.
+        encrypted_zeros: Bytes,
+        /// Display name for the session.
+        name: String,
+        /// Optional write password hash for session protection.
+        write_password_hash: Option<Bytes>,
+    },
+    /// Request to close an existing session.
+    CloseSession {
+        /// The session name to close.
+        name: String,
+        /// Authentication token for the session.
+        token: String,
+    },
+    /// Start bidirectional streaming for a session.
+    StartChannel {
+        /// The session name to start streaming for.
+        name: String,
+        /// Authentication token for the session.
+        token: String,
+    },
+    /// Terminal data from CLI client.
+    TerminalData {
+        /// Shell ID this data belongs to.
+        id: u32,
+        /// Raw terminal data bytes.
+        data: Bytes,
+        /// Sequence number for ordering.
+        seq: u64,
+    },
+    /// Acknowledge new shell creation.
+    CreatedShell {
+        /// The newly created shell ID.
+        id: u32,
+        /// Initial x-coordinate of the shell window.
+        x: i32,
+        /// Initial y-coordinate of the shell window.
+        y: i32,
+    },
+    /// Acknowledge shell closure.
+    ClosedShell {
+        /// The shell ID that was closed.
+        id: u32,
+    },
+    /// Pong response for latency measurement.
+    Pong {
+        /// Unix timestamp for latency calculation.
+        timestamp: u64,
+    },
+    /// Error from CLI client.
+    Error {
+        /// Error message description.
+        message: String,
+    },
+}
+
+/// CLI-specific response message types.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub enum CliResponseMessage {
+    /// Response to open session request.
+    OpenSession {
+        /// The session name that was created.
+        name: String,
+        /// Authentication token for the session.
+        token: String,
+        /// Public URL to access the session.
+        url: String,
+    },
+    /// Response to close session request.
+    CloseSession {},
+    /// Response to start channel request.
+    StartChannel {},
+    /// Terminal input from web clients.
+    TerminalInput {
+        /// Shell ID this input is for.
+        id: u32,
+        /// Input data bytes from the user.
+        data: Bytes,
+        /// Byte offset in the terminal stream.
+        offset: u64,
+    },
+    /// Request to create new shell.
+    CreateShell {
+        /// The shell ID to create.
+        id: u32,
+        /// Initial x-coordinate for the shell window.
+        x: i32,
+        /// Initial y-coordinate for the shell window.
+        y: i32,
+    },
+    /// Request to close shell.
+    CloseShell {
+        /// The shell ID to close.
+        id: u32,
+    },
+    /// Sequence number synchronization.
+    Sync {
+        /// Map of shell IDs to their current sequence numbers.
+        sequence_numbers: std::collections::HashMap<u32, u64>,
+    },
+    /// Terminal resize request.
+    Resize {
+        /// Shell ID to resize.
+        id: u32,
+        /// New number of rows for the terminal.
+        rows: u32,
+        /// New number of columns for the terminal.
+        cols: u32,
+    },
+    /// Ping request for latency measurement.
+    Ping {
+        /// Unix timestamp for latency calculation.
+        timestamp: u64,
+    },
+    /// Error response.
+    Error {
+        /// Error message description.
+        message: String,
+    },
+}

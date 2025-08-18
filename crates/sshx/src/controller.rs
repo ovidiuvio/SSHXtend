@@ -6,18 +6,18 @@ use std::pin::pin;
 use anyhow::{Context, Result};
 use sshx_core::proto::{
     client_update::ClientMessage, server_update::ServerMessage,
-    sshx_service_client::SshxServiceClient, ClientUpdate, CloseRequest, NewShell, OpenRequest,
+    ClientUpdate, CloseRequest, NewShell, OpenRequest,
 };
 use sshx_core::{rand_alphanumeric, Sid};
 use tokio::sync::mpsc;
 use tokio::task;
 use tokio::time::{self, Duration, Instant, MissedTickBehavior};
 use tokio_stream::{wrappers::ReceiverStream, StreamExt};
-use tonic::transport::Channel;
 use tracing::{debug, error, warn};
 
 use crate::encrypt::Encrypt;
 use crate::runner::{Runner, ShellData};
+use crate::transport::{SshxTransport, GrpcTransport};
 
 /// Interval for sending empty heartbeat messages to the server.
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(2);
@@ -37,6 +37,9 @@ pub struct Controller {
     url: String,
     write_url: Option<String>,
 
+    /// Transport layer (gRPC or WebSocket)
+    transport: Box<dyn SshxTransport>,
+
     /// Channels with backpressure routing messages to each shell task.
     shells_tx: HashMap<Sid, mpsc::Sender<ShellData>>,
     /// Channel shared with tasks to allow them to output client messages.
@@ -46,14 +49,35 @@ pub struct Controller {
 }
 
 impl Controller {
-    /// Construct a new controller, connecting to the remote server.
+    /// Construct a new controller, connecting to the remote server via gRPC.
+    /// 
+    /// This method is kept for backward compatibility but will use the new
+    /// transport abstraction internally.
     pub async fn new(
         origin: &str,
         name: &str,
         runner: Runner,
         enable_readers: bool,
     ) -> Result<Self> {
-        debug!(%origin, "connecting to server");
+        debug!(%origin, "connecting to server via legacy method");
+        
+        // Create a gRPC transport for backward compatibility
+        let transport = Box::new(GrpcTransport::connect(origin).await?) as Box<dyn SshxTransport>;
+        Self::with_transport(origin, name, runner, enable_readers, transport).await
+    }
+
+    /// Construct a new controller with a pre-established transport connection.
+    ///
+    /// This is the new preferred method that accepts any transport type,
+    /// allowing for gRPC→WebSocket fallback logic to be handled externally.
+    pub async fn with_transport(
+        origin: &str,
+        name: &str,
+        runner: Runner,
+        enable_readers: bool,
+        mut transport: Box<dyn SshxTransport>,
+    ) -> Result<Self> {
+        debug!(%origin, transport_type = transport.connection_type(), "creating controller with transport");
 
         let encryption_key = rand_alphanumeric(14); // 83.3 bits of entropy
 
@@ -73,7 +97,6 @@ impl Controller {
             (None, None)
         };
 
-        let mut client = Self::connect(origin).await?;
         let encrypt = kdf_task.await?;
         let write_password_hash = if let Some(task) = kdf_write_password_task {
             Some(task.await?.zeros().into())
@@ -87,7 +110,8 @@ impl Controller {
             name: name.into(),
             write_password_hash,
         };
-        let mut resp = client.open(req).await?.into_inner();
+        
+        let mut resp = transport.open(req).await?;
         resp.url = resp.url + "#" + &encryption_key;
 
         let write_url = if let Some(write_password) = write_password {
@@ -106,19 +130,25 @@ impl Controller {
             token: resp.token,
             url: resp.url,
             write_url,
+            transport,
             shells_tx: HashMap::new(),
             output_tx,
             output_rx,
         })
     }
 
-    /// Create a new gRPC client to the HTTP(S) origin.
+    /// Create a new transport connection to the HTTP(S) origin.
     ///
     /// This is used on reconnection to the server, since some replicas may be
     /// gracefully shutting down, which means connected clients need to start a
-    /// new TCP handshake.
-    async fn connect(origin: &str) -> Result<SshxServiceClient<Channel>, tonic::transport::Error> {
-        SshxServiceClient::connect(String::from(origin)).await
+    /// new connection.
+    async fn connect_transport(origin: &str, session_name: &str) -> Result<Box<dyn SshxTransport>, anyhow::Error> {
+        // For reconnection, use the same fallback logic as initial connection
+        use crate::connection::{connect_with_fallback, ConnectionConfig};
+        
+        let config = ConnectionConfig::default(); // Silent mode for reconnection
+        let result = connect_with_fallback(origin, session_name, config).await?;
+        Ok(result.transport)
     }
 
     /// Returns the name of the session.
@@ -166,9 +196,10 @@ impl Controller {
         let hello = ClientMessage::Hello(format!("{},{}", self.name, self.token));
         send_msg(&tx, hello).await?;
 
-        let mut client = Self::connect(&self.origin).await?;
-        let resp = client.channel(ReceiverStream::new(rx)).await?;
-        let mut messages = resp.into_inner(); // A stream of server messages.
+        // Create a new transport connection for reconnection
+        let mut transport = Self::connect_transport(&self.origin, &self.name).await?;
+        let resp = transport.channel(ReceiverStream::new(rx)).await?;
+        let mut messages = resp; // A stream of server messages.
 
         let mut interval = time::interval(HEARTBEAT_INTERVAL);
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -185,8 +216,8 @@ impl Controller {
                     continue;
                 }
                 item = messages.next() => {
-                    item.context("server closed connection")??
-                        .server_message
+                    item.context("server closed connection")?
+                        ?.server_message
                         .context("server message is missing")?
                 }
                 _ = &mut reconnect => {
@@ -275,14 +306,13 @@ impl Controller {
     }
 
     /// Terminate this session gracefully.
-    pub async fn close(&self) -> Result<()> {
+    pub async fn close(&mut self) -> Result<()> {
         debug!("closing session");
         let req = CloseRequest {
             name: self.name.clone(),
             token: self.token.clone(),
         };
-        let mut client = Self::connect(&self.origin).await?;
-        client.close(req).await?;
+        self.transport.close(req).await?;
         Ok(())
     }
 }

@@ -6,8 +6,10 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod connection;
 pub mod controller;
 pub mod encrypt;
 pub mod runner;
 pub mod service;
 pub mod terminal;
+pub mod transport;

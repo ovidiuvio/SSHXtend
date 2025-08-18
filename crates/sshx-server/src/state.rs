@@ -47,7 +47,10 @@ pub struct ServerState {
 impl ServerState {
     /// Create an empty server state using the given secret.
     pub fn new(options: ServerOptions) -> Result<Self> {
-        let secret = options.secret.clone().unwrap_or_else(|| rand_alphanumeric(22));
+        let secret = options
+            .secret
+            .clone()
+            .unwrap_or_else(|| rand_alphanumeric(22));
         let mesh = match &options.redis_url {
             Some(url) => Some(StorageMesh::new(url, options.host.as_deref())?),
             None => None,
@@ -108,7 +111,9 @@ impl ServerState {
 
     /// Iterate over all local sessions.
     pub fn iter_sessions(&self) -> impl Iterator<Item = (String, Arc<Session>)> + '_ {
-        self.store.iter().map(|entry| (entry.key().clone(), entry.value().clone()))
+        self.store
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
     }
 
     /// Close a session permanently on this and other servers.

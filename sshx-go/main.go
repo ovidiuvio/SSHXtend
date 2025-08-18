@@ -17,6 +17,7 @@ import (
 	"sshx-go/pkg/client"
 	"sshx-go/pkg/service"
 	"sshx-go/pkg/terminal"
+	"sshx-go/pkg/transport"
 )
 
 func main() {
@@ -29,6 +30,8 @@ func main() {
 		serviceCmd    = flag.String("service", "", "Service management (install|uninstall|status|start|stop)")
 		dashboard     = flag.Bool("dashboard", false, "Register with a new dashboard")
 		dashboardKey  = flag.String("dashboard-key", "", "Join existing dashboard with specified key")
+		useTransport  = flag.Bool("use-transport", false, "Use new transport abstraction with gRPC->WebSocket fallback")
+		verbose       = flag.Bool("verbose", false, "Enable verbose connection reporting")
 	)
 
 	flag.Usage = func() {
@@ -54,12 +57,12 @@ Usage:
 
 	flag.Parse()
 
-	if err := runSshx(*server, *shell, *quiet, *name, *enableReaders, *serviceCmd, *dashboard, *dashboardKey); err != nil {
+	if err := runSshx(*server, *shell, *quiet, *name, *enableReaders, *serviceCmd, *dashboard, *dashboardKey, *useTransport, *verbose); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func runSshx(server, shell string, quiet bool, name string, enableReaders bool, serviceCmd string, dashboard bool, dashboardKey string) error {
+func runSshx(server, shell string, quiet bool, name string, enableReaders bool, serviceCmd string, dashboard bool, dashboardKey string, useTransport bool, verbose bool) error {
 	// Handle service commands if present
 	if serviceCmd != "" {
 		return handleServiceCommand(serviceCmd, server, dashboard || dashboardKey != "", enableReaders, name, shell)
@@ -88,10 +91,34 @@ func runSshx(server, shell string, quiet bool, name string, enableReaders bool, 
 		EnableReaders: enableReaders,
 	}
 
-	// Create controller
-	controller, err := client.NewController(config)
-	if err != nil {
-		return fmt.Errorf("failed to create controller: %w", err)
+	var controller interface {
+		Name() string
+		URL() string
+		WriteURL() *string
+		Run() error
+		Close() error
+	}
+
+	// Create controller - use new transport abstraction if requested
+	if useTransport {
+		connConfig := transport.DefaultConnectionConfig()
+		if verbose {
+			connConfig = transport.VerboseConfig()
+		}
+		v2Controller, err := client.NewControllerV2WithConnection(config, connConfig)
+		if err != nil {
+			return fmt.Errorf("failed to create controller with transport: %w", err)
+		}
+		controller = v2Controller
+		if verbose {
+			log.Printf("Using %s transport", v2Controller.ConnectionMethod())
+		}
+	} else {
+		v1Controller, err := client.NewController(config)
+		if err != nil {
+			return fmt.Errorf("failed to create controller: %w", err)
+		}
+		controller = v1Controller
 	}
 
 	// Register with dashboard if requested
@@ -222,7 +249,11 @@ func makeRelativeURL(fullURL string) string {
 	return fullURL
 }
 
-func registerWithDashboard(server string, controller *client.Controller, displayName string, dashboardKey *string) error {
+func registerWithDashboard(server string, controller interface {
+	Name() string
+	URL() string
+	WriteURL() *string
+}, displayName string, dashboardKey *string) error {
 	dashboardURL := server + "/api/dashboards/register"
 	
 	// Prepare request payload - matches Rust RegisterDashboardRequest exactly
@@ -265,7 +296,10 @@ func registerWithDashboard(server string, controller *client.Controller, display
 	return nil
 }
 
-func printGreeting(shell string, controller *client.Controller) {
+func printGreeting(shell string, controller interface {
+	URL() string
+	WriteURL() *string
+}) {
 	version := "v1.0.0" // You could make this dynamic
 
 	if writeURL := controller.WriteURL(); writeURL != nil {
