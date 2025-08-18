@@ -4,28 +4,49 @@ use std::sync::Arc;
 
 use axum::routing::{any, get, get_service, post};
 use axum::{Json, Router};
-use axum::extract::{Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use tower_http::services::{ServeDir, ServeFile};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use parking_lot::RwLock;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH, Duration};
 use once_cell::sync::Lazy;
+use rand::Rng;
+use tokio::time::interval;
 
 use crate::ServerState;
 
 pub mod protocol;
 mod socket;
 
-/// Global registry for dashboard session metadata
-static DASHBOARD_REGISTRY: Lazy<RwLock<HashMap<String, DashboardMetadata>>> = 
+/// A dashboard that contains multiple sessions
+#[derive(Debug, Clone)]
+pub struct Dashboard {
+    /// Unique dashboard key
+    pub key: String,
+    /// When this dashboard was created
+    pub created_at: u64,
+    /// When this dashboard was last accessed
+    pub last_accessed: u64,
+    /// Session names registered to this dashboard
+    pub session_names: HashSet<String>,
+}
+
+/// Global registry for all dashboards
+static DASHBOARDS: Lazy<RwLock<HashMap<String, Dashboard>>> = 
     Lazy::new(|| RwLock::new(HashMap::new()));
 
-/// Dashboard registration metadata stored per session
+/// Global registry for session metadata (session_name -> metadata)
+static SESSION_METADATA: Lazy<RwLock<HashMap<String, SessionMetadata>>> = 
+    Lazy::new(|| RwLock::new(HashMap::new()));
+
+/// Session metadata for a specific dashboard
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct DashboardMetadata {
+pub struct SessionMetadata {
+    /// Session name/ID
+    pub session_name: String,
     /// Complete session URL with encryption key
     pub url: String,
     /// Write URL if read-only mode is enabled
@@ -34,6 +55,8 @@ pub struct DashboardMetadata {
     pub display_name: String,
     /// When this registration was created
     pub registered_at: u64,
+    /// Dashboard key this session belongs to
+    pub dashboard_key: String,
 }
 
 /// Session information for the dashboard API.
@@ -52,8 +75,8 @@ pub struct SessionInfo {
     pub last_accessed: u64,
     /// List of connected user names
     pub users: Vec<String>,
-    /// Dashboard metadata if session was registered
-    pub dashboard: Option<DashboardMetadata>,
+    /// Session metadata if registered to a dashboard
+    pub metadata: Option<SessionMetadata>,
 }
 
 /// Request payload for dashboard registration
@@ -68,6 +91,18 @@ pub struct RegisterDashboardRequest {
     pub write_url: Option<String>,
     /// Display name for the session
     pub display_name: String,
+    /// Optional dashboard key to register to (if not provided, generates new)
+    pub dashboard_key: Option<String>,
+}
+
+/// Response for dashboard registration
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterDashboardResponse {
+    /// The dashboard key (generated or provided)
+    pub dashboard_key: String,
+    /// Full dashboard URL
+    pub dashboard_url: String,
 }
 
 /// Query parameters for session listing
@@ -124,57 +159,121 @@ pub struct PaginationInfo {
     pub has_next: bool,
 }
 
-/// Handler for registering a session with the dashboard
+/// Generate a new dashboard key
+fn generate_dashboard_key() -> String {
+    const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let mut rng = rand::thread_rng();
+    (0..16)
+        .map(|_| {
+            let idx = rng.gen_range(0..CHARS.len());
+            CHARS[idx] as char
+        })
+        .collect()
+}
+
+/// Start background task to clean up empty dashboards
+pub fn start_dashboard_cleanup() {
+    tokio::spawn(async {
+        let mut cleanup_interval = interval(Duration::from_secs(3600)); // Check every hour
+        loop {
+            cleanup_interval.tick().await;
+            
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64;
+            
+            let mut dashboards = DASHBOARDS.write();
+            dashboards.retain(|_, dashboard| {
+                // Keep dashboards that have sessions or were accessed in last 24 hours
+                !dashboard.session_names.is_empty() || 
+                (now - dashboard.last_accessed) < 86_400_000 // 24 hours in ms
+            });
+        }
+    });
+}
+
+/// Handler for registering a session with a dashboard
 async fn register_dashboard(
+    State(state): axum::extract::State<Arc<ServerState>>,
     Json(request): Json<RegisterDashboardRequest>,
-) -> Result<Json<&'static str>, axum::http::StatusCode> {
+) -> Result<Json<RegisterDashboardResponse>, StatusCode> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis() as u64;
 
-    let metadata = DashboardMetadata {
+    // Get or generate dashboard key
+    let dashboard_key = request.dashboard_key.unwrap_or_else(generate_dashboard_key);
+    
+    // Get or create dashboard
+    let mut dashboards = DASHBOARDS.write();
+    let dashboard = dashboards.entry(dashboard_key.clone()).or_insert_with(|| {
+        Dashboard {
+            key: dashboard_key.clone(),
+            created_at: now,
+            last_accessed: now,
+            session_names: HashSet::new(),
+        }
+    });
+    
+    // Add session to dashboard
+    dashboard.session_names.insert(request.session_name.clone());
+    dashboard.last_accessed = now;
+    
+    // Store session metadata
+    let metadata = SessionMetadata {
+        session_name: request.session_name.clone(),
         url: request.url,
         write_url: request.write_url,
         display_name: request.display_name,
         registered_at: now,
+        dashboard_key: dashboard_key.clone(),
     };
-
-    DASHBOARD_REGISTRY.write().insert(request.session_name, metadata);
+    drop(dashboards);
     
-    Ok(Json("OK"))
+    SESSION_METADATA.write().insert(request.session_name, metadata);
+    
+    // Build dashboard URL
+    let host = state.options().host.as_deref().unwrap_or("localhost");
+    let dashboard_url = format!("https://{}/d/{}", host, dashboard_key);
+    
+    Ok(Json(RegisterDashboardResponse {
+        dashboard_key,
+        dashboard_url,
+    }))
 }
 
-/// Handler for listing all dashboard-registered sessions
-async fn list_sessions(
+/// Handler for listing sessions in a specific dashboard
+async fn list_dashboard_sessions(
     State(state): axum::extract::State<Arc<ServerState>>,
+    Path(dashboard_key): Path<String>,
     Query(query): Query<SessionListQuery>,
-    headers: HeaderMap,
 ) -> Result<Json<SessionListResponse>, StatusCode> {
-    // Check if dashboard key is configured
-    if let Some(expected_key) = &state.options().dashboard_key {
-        // Check for X-Dashboard-Key header
-        if let Some(provided_key) = headers.get("X-Dashboard-Key") {
-            if let Ok(key_str) = provided_key.to_str() {
-                if key_str == expected_key {
-                    // Authentication successful, proceed
-                } else {
-                    return Err(StatusCode::UNAUTHORIZED);
-                }
-            } else {
-                return Err(StatusCode::UNAUTHORIZED);
-            }
+    // Update dashboard last accessed time
+    {
+        let mut dashboards = DASHBOARDS.write();
+        if let Some(dashboard) = dashboards.get_mut(&dashboard_key) {
+            dashboard.last_accessed = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64;
         } else {
-            return Err(StatusCode::UNAUTHORIZED);
+            return Err(StatusCode::NOT_FOUND);
         }
     }
     
+    // Get sessions for this dashboard
+    let dashboards = DASHBOARDS.read();
+    let dashboard = dashboards.get(&dashboard_key).ok_or(StatusCode::NOT_FOUND)?;
+    let session_names = dashboard.session_names.clone();
+    drop(dashboards);
+    
     let mut sessions = Vec::new();
-    let registry = DASHBOARD_REGISTRY.read();
     
     for (name, session) in state.iter_sessions() {
-        // Only include sessions that are registered with the dashboard
-        if let Some(dashboard_metadata) = registry.get(&name) {
+        // Only include sessions registered to this dashboard
+        if session_names.contains(&name) {
             let shell_count = session.shell_count();
             
             let user_list = session.list_users();
@@ -185,6 +284,9 @@ async fn list_sessions(
             
             let has_write_password = session.metadata().write_password_hash.is_some();
             
+            // Get stored metadata for this session
+            let metadata = SESSION_METADATA.read().get(&name).cloned();
+            
             sessions.push(SessionInfo {
                 name,
                 shell_count,
@@ -192,7 +294,7 @@ async fn list_sessions(
                 has_write_password,
                 last_accessed,
                 users,
-                dashboard: Some(dashboard_metadata.clone()),
+                metadata,
             });
         }
     }
@@ -203,8 +305,8 @@ async fn list_sessions(
             let search_lower = search_query.to_lowercase();
             sessions.retain(|session| {
                 session.name.to_lowercase().contains(&search_lower) ||
-                session.dashboard.as_ref()
-                    .and_then(|d| Some(d.display_name.to_lowercase().contains(&search_lower)))
+                session.metadata.as_ref()
+                    .map(|m| m.display_name.to_lowercase().contains(&search_lower))
                     .unwrap_or(false) ||
                 session.users.iter().any(|user| user.to_lowercase().contains(&search_lower))
             });
@@ -271,27 +373,48 @@ async fn list_sessions(
     }))
 }
 
-/// Simple authentication handler for dashboard access
-async fn check_dashboard_auth(
-    State(state): axum::extract::State<Arc<ServerState>>,
-    headers: HeaderMap,
-) -> Result<Json<&'static str>, StatusCode> {
-    // Check if dashboard key is configured
-    if let Some(expected_key) = &state.options().dashboard_key {
-        // Check for X-Dashboard-Key header
-        if let Some(provided_key) = headers.get("X-Dashboard-Key") {
-            if let Ok(key_str) = provided_key.to_str() {
-                if key_str == expected_key {
-                    return Ok(Json("authenticated"));
-                }
-            }
-        }
-        // Authentication required but not provided/invalid
-        return Err(StatusCode::UNAUTHORIZED);
+/// Check if a dashboard exists
+async fn check_dashboard_status(
+    Path(dashboard_key): Path<String>,
+) -> StatusCode {
+    let dashboards = DASHBOARDS.read();
+    if dashboards.contains_key(&dashboard_key) {
+        StatusCode::OK
+    } else {
+        StatusCode::NOT_FOUND
     }
-    
-    // No authentication required
-    Ok(Json("no-auth-required"))
+}
+
+/// Response for dashboard info
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardInfoResponse {
+    /// Whether the dashboard exists
+    pub exists: bool,
+    /// Number of sessions in the dashboard
+    pub session_count: usize,
+    /// When the dashboard was created (Unix timestamp in ms)
+    pub created_at: Option<u64>,
+}
+
+/// Get dashboard information
+async fn get_dashboard_info(
+    Path(dashboard_key): Path<String>,
+) -> Json<DashboardInfoResponse> {
+    let dashboards = DASHBOARDS.read();
+    if let Some(dashboard) = dashboards.get(&dashboard_key) {
+        Json(DashboardInfoResponse {
+            exists: true,
+            session_count: dashboard.session_names.len(),
+            created_at: Some(dashboard.created_at),
+        })
+    } else {
+        Json(DashboardInfoResponse {
+            exists: false,
+            session_count: 0,
+            created_at: None,
+        })
+    }
 }
 
 /// Returns the web application server, routed with Axum.
@@ -316,8 +439,9 @@ fn backend() -> Router<Arc<ServerState>> {
     Router::new()
         // Session WebSocket routes (unprotected - clients need direct access)
         .route("/s/{name}", any(socket::get_session_ws))
-        // Dashboard API routes (protected)
-        .route("/sessions", get(list_sessions))
-        .route("/dashboard/register", post(register_dashboard))
-        .route("/dashboard/auth", get(check_dashboard_auth))
+        // Dashboard API routes
+        .route("/dashboards/{key}/sessions", get(list_dashboard_sessions))
+        .route("/dashboards/{key}/status", get(check_dashboard_status))
+        .route("/dashboards/{key}/info", get(get_dashboard_info))
+        .route("/dashboards/register", post(register_dashboard))
 }

@@ -3,7 +3,7 @@ use std::process::ExitCode;
 use ansi_term::Color::{Cyan, Fixed, Green};
 use anyhow::Result;
 use clap::Parser;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sshx::{controller::Controller, runner::Runner, service, terminal::get_default_shell};
 use tokio::signal;
 use tracing::{error, warn};
@@ -58,9 +58,11 @@ struct Args {
     #[clap(long, value_parser = ["install", "uninstall", "status", "start", "stop"])]
     service: Option<String>,
 
-    /// Register this session with the web dashboard for monitoring.
-    #[clap(long)]
-    dashboard: bool,
+    /// Register this session with a dashboard. 
+    /// If no key provided, generates a new dashboard.
+    /// If key provided, joins existing dashboard.
+    #[clap(long, value_name = "KEY")]
+    dashboard: Option<Option<String>>,
 }
 
 /// Dashboard registration request payload
@@ -71,6 +73,15 @@ struct RegisterDashboardRequest {
     url: String,
     write_url: Option<String>,
     display_name: String,
+    dashboard_key: Option<String>,
+}
+
+/// Dashboard registration response
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RegisterDashboardResponse {
+    dashboard_key: String,
+    dashboard_url: String,
 }
 
 /// Extract relative URL from full URL (removes domain for reverse proxy compatibility)
@@ -94,14 +105,20 @@ fn make_relative_url(full_url: &str) -> String {
 }
 
 /// Register session with the dashboard
-async fn register_with_dashboard(server_url: &str, controller: &Controller, display_name: &str) -> Result<()> {
-    let dashboard_url = format!("{}/api/dashboard/register", server_url);
+async fn register_with_dashboard(
+    server_url: &str, 
+    controller: &Controller, 
+    display_name: &str,
+    dashboard_key: Option<String>,
+) -> Result<()> {
+    let dashboard_url = format!("{}/api/dashboards/register", server_url);
     
     let request = RegisterDashboardRequest {
         session_name: controller.name().to_string(),
         url: make_relative_url(controller.url()),
         write_url: controller.write_url().map(|u| make_relative_url(u)),
         display_name: display_name.to_string(),
+        dashboard_key,
     };
 
     let client = reqwest::Client::new();
@@ -112,7 +129,9 @@ async fn register_with_dashboard(server_url: &str, controller: &Controller, disp
         .await?;
 
     if response.status().is_success() {
-        println!("✓ Session registered with dashboard");
+        let response_data: RegisterDashboardResponse = response.json().await?;
+        println!("\n  {} Session registered to dashboard", Green.paint("✓"));
+        println!("  {} Dashboard URL: {}", Green.paint("➜"), Cyan.underline().paint(&response_data.dashboard_url));
     } else {
         warn!("Failed to register with dashboard: {}", response.status());
     }
@@ -167,7 +186,7 @@ async fn start(args: Args) -> Result<()> {
                 // Use current arguments for service configuration
                 service::install_with_config(
                     &args.server,
-                    args.dashboard,
+                    args.dashboard.is_some(),
                     args.enable_readers,
                     args.name.as_deref(),
                     args.shell.as_deref(),
@@ -209,8 +228,10 @@ async fn start(args: Args) -> Result<()> {
     .await?;
 
     // Register with dashboard if requested
-    if args.dashboard {
-        if let Err(e) = register_with_dashboard(&args.server, &controller, &name).await {
+    if let Some(dashboard_option) = args.dashboard {
+        // dashboard_option is Some(key) if key provided, None if just --dashboard
+        let dashboard_key = dashboard_option;
+        if let Err(e) = register_with_dashboard(&args.server, &controller, &name, dashboard_key).await {
             warn!("Dashboard registration failed: {}", e);
         }
     }

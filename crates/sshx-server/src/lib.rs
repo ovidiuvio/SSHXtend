@@ -44,9 +44,6 @@ pub struct ServerOptions {
 
     /// Hostname of this server, if running multiple servers.
     pub host: Option<String>,
-
-    /// Optional dashboard API key for protecting dashboard routes.
-    pub dashboard_key: Option<String>,
 }
 
 /// Stateful object that manages the sshx server, with graceful termination.
@@ -58,6 +55,9 @@ pub struct Server {
 impl Server {
     /// Create a new application server, but do not listen for connections yet.
     pub fn new(options: ServerOptions) -> Result<Self> {
+        // Start dashboard cleanup task
+        web::start_dashboard_cleanup();
+        
         Ok(Self {
             state: Arc::new(ServerState::new(options)?),
             shutdown: Shutdown::new(),

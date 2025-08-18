@@ -2,11 +2,13 @@
  * API client for dashboard session management
  */
 
-export interface DashboardMetadata {
+export interface SessionMetadata {
+  sessionName: string;
   url: string;
   writeUrl?: string;
   displayName: string;
   registeredAt: number;
+  dashboardKey: string;
 }
 
 export interface SessionInfo {
@@ -16,7 +18,7 @@ export interface SessionInfo {
   hasWritePassword: boolean;
   lastAccessed: number;
   users: string[];
-  dashboard?: DashboardMetadata;
+  metadata?: SessionMetadata;
 }
 
 export interface PaginationInfo {
@@ -42,61 +44,47 @@ export interface SessionListParams {
 }
 
 /**
- * Get dashboard API headers with authentication if needed
+ * Dashboard information response
  */
-function getDashboardHeaders(): HeadersInit {
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-  
-  // Check for dashboard key in environment or browser
-  const dashboardKey = typeof window !== 'undefined' 
-    ? window.localStorage?.getItem('sshx-dashboard-key') 
-    : null;
-    
-  if (dashboardKey) {
-    headers['X-Dashboard-Key'] = dashboardKey;
-  }
-  
-  return headers;
+export interface DashboardInfo {
+  exists: boolean;
+  sessionCount: number;
+  createdAt?: number;
 }
 
 /**
- * Check if dashboard authentication is required and valid
+ * Check if a dashboard exists
  */
-export async function checkDashboardAuth(): Promise<{required: boolean, valid: boolean}> {
+export async function checkDashboardStatus(dashboardKey: string): Promise<{ enabled: boolean }> {
   try {
-    const response = await fetch('/api/dashboard/auth', {
-      headers: getDashboardHeaders(),
-    });
-    
-    if (response.ok) {
-      const result = await response.text();
-      return {
-        required: result.includes('authenticated'),
-        valid: true
-      };
-    } else if (response.status === 401) {
-      return {
-        required: true,
-        valid: false
-      };
-    } else {
-      throw new Error(`Auth check failed: ${response.statusText}`);
-    }
+    const response = await fetch(`/api/dashboards/${dashboardKey}/status`);
+    return { enabled: response.ok };
   } catch (error) {
-    console.error('Dashboard auth check failed:', error);
-    return {
-      required: false,
-      valid: true
-    };
+    console.error('Dashboard status check failed:', error);
+    return { enabled: false };
   }
 }
 
 /**
- * Fetch sessions with pagination support
+ * Get dashboard information
  */
-export async function fetchSessions(params: SessionListParams = {}): Promise<SessionListResponse> {
+export async function getDashboardInfo(dashboardKey: string): Promise<DashboardInfo> {
+  try {
+    const response = await fetch(`/api/dashboards/${dashboardKey}/info`);
+    if (!response.ok) {
+      return { exists: false, sessionCount: 0 };
+    }
+    return response.json();
+  } catch (error) {
+    console.error('Failed to get dashboard info:', error);
+    return { exists: false, sessionCount: 0 };
+  }
+}
+
+/**
+ * Fetch sessions for a specific dashboard with pagination support
+ */
+export async function fetchSessions(dashboardKey: string, params: SessionListParams = {}): Promise<SessionListResponse> {
   const searchParams = new URLSearchParams();
   
   if (params.page) searchParams.set('page', params.page.toString());
@@ -105,15 +93,17 @@ export async function fetchSessions(params: SessionListParams = {}): Promise<Ses
   if (params.sort) searchParams.set('sort', params.sort);
   if (params.order) searchParams.set('order', params.order);
   
-  const url = `/api/sessions${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
+  const url = `/api/dashboards/${dashboardKey}/sessions${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
   
   const response = await fetch(url, {
-    headers: getDashboardHeaders(),
+    headers: {
+      'Content-Type': 'application/json',
+    },
   });
   
   if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('Dashboard authentication required. Please provide the dashboard key.');
+    if (response.status === 404) {
+      throw new Error('Dashboard not found');
     }
     throw new Error(`Failed to fetch sessions: ${response.statusText}`);
   }
@@ -121,10 +111,10 @@ export async function fetchSessions(params: SessionListParams = {}): Promise<Ses
 }
 
 /**
- * Fetch all sessions (backwards compatibility)
+ * Fetch all sessions for a dashboard (backwards compatibility)
  */
-export async function fetchAllSessions(): Promise<SessionInfo[]> {
-  const response = await fetchSessions({ pageSize: 1000 }); // Large page size to get all
+export async function fetchAllSessions(dashboardKey: string): Promise<SessionInfo[]> {
+  const response = await fetchSessions(dashboardKey, { pageSize: 1000 }); // Large page size to get all
   return response.sessions;
 }
 

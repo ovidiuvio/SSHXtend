@@ -24,22 +24,24 @@ sshx --server http://localhost:8051 --secret "myteam-secret" --session-id "dev-e
 # ➜ Link: http://localhost:8051/s/dev-env#myteam-secret
 ```
 
-### 📊 **Protected Session Dashboard**
-Web-based dashboard to monitor and manage all active sessions:
-- View all running sessions with real-time stats
+### 📊 **Multi-Dashboard System**
+Web-based dashboards to monitor and manage sessions by groups:
+- Multiple isolated dashboards at `/d/<key>` URLs
+- Each dashboard tracks its own set of sessions
+- Search and filter within each dashboard
 - Pagination support for large deployments
-- **🔐 Optional password protection** with dashboard key authentication
 - Session metadata and user count
 - Auto-refresh every 10 seconds with live updates
+- Automatic cleanup of empty dashboards after 24 hours
 
-**🔑 Dashboard Authentication:**
+**🔑 Dashboard Usage:**
 ```bash
-# Protect dashboard with a key
-sshx-server --dashboard-key "your-secret-key"
+# Create a new dashboard when connecting
+sshx --dashboard
+# Output: Dashboard URL: https://sshx.io/d/xK9mP2nQ7vR4sT6w
 
-# Or via environment variable
-export SSHX_DASHBOARD_KEY="your-secret-key"
-sshx-server
+# Join an existing dashboard
+sshx --dashboard xK9mP2nQ7vR4sT6w
 ```
 
 <img src="/static/images/sshx-dashboard.png" alt="Session Dashboard" width="700">
