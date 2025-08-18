@@ -29,7 +29,8 @@ func main() {
 		sessionID     = flag.String("session-id", "", "Optional custom session ID")
 		secret        = flag.String("secret", "", "Optional encryption key")
 		serviceCmd    = flag.String("service", "", "Service management (install|uninstall|status|start|stop)")
-		dashboard     = flag.Bool("dashboard", false, "Register this session with the web dashboard")
+		dashboard     = flag.Bool("dashboard", false, "Register with a new dashboard")
+		dashboardKey  = flag.String("dashboard-key", "", "Join existing dashboard with specified key")
 	)
 
 	flag.Usage = func() {
@@ -43,6 +44,8 @@ Service Management:
   --service stop       Stop service
 
 Examples:
+  sshx --dashboard                            # Create new dashboard
+  sshx --dashboard-key abc123                  # Join existing dashboard
   sshx --server https://your-server.com --dashboard --service install
   sshx --shell /bin/bash --name server1 --service install
 
@@ -53,15 +56,15 @@ Usage:
 
 	flag.Parse()
 
-	if err := runSshx(*server, *shell, *quiet, *name, *enableReaders, *sessionID, *secret, *serviceCmd, *dashboard); err != nil {
+	if err := runSshx(*server, *shell, *quiet, *name, *enableReaders, *sessionID, *secret, *serviceCmd, *dashboard, *dashboardKey); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func runSshx(server, shell string, quiet bool, name string, enableReaders bool, sessionID, secret, serviceCmd string, dashboard bool) error {
+func runSshx(server, shell string, quiet bool, name string, enableReaders bool, sessionID, secret, serviceCmd string, dashboard bool, dashboardKey string) error {
 	// Handle service commands if present
 	if serviceCmd != "" {
-		return handleServiceCommand(serviceCmd, server, dashboard, enableReaders, name, shell)
+		return handleServiceCommand(serviceCmd, server, dashboard || dashboardKey != "", enableReaders, name, shell)
 	}
 
 	// Get shell command
@@ -102,8 +105,14 @@ func runSshx(server, shell string, quiet bool, name string, enableReaders bool, 
 	}
 
 	// Register with dashboard if requested
-	if dashboard {
-		if err := registerWithDashboard(server, controller, sessionName); err != nil {
+	if dashboard || dashboardKey != "" {
+		var key *string
+		if dashboardKey != "" {
+			// Join existing dashboard
+			key = &dashboardKey
+		}
+		// else key is nil, which creates a new dashboard
+		if err := registerWithDashboard(server, controller, sessionName, key); err != nil {
 			log.Printf("Dashboard registration failed: %v", err)
 		}
 	}
@@ -194,10 +203,17 @@ func getDefaultSessionName() string {
 
 // RegisterDashboardRequest matches the Rust implementation
 type RegisterDashboardRequest struct {
-	SessionName string  `json:"sessionName"`
-	URL         string  `json:"url"`
-	WriteURL    *string `json:"writeUrl,omitempty"`
-	DisplayName string  `json:"displayName"`
+	SessionName  string  `json:"sessionName"`
+	URL          string  `json:"url"`
+	WriteURL     *string `json:"writeUrl,omitempty"`
+	DisplayName  string  `json:"displayName"`
+	DashboardKey *string `json:"dashboardKey,omitempty"`
+}
+
+// RegisterDashboardResponse from the server
+type RegisterDashboardResponse struct {
+	DashboardKey string `json:"dashboardKey"`
+	DashboardURL string `json:"dashboardUrl"`
 }
 
 // makeRelativeURL extracts relative URL from full URL for reverse proxy compatibility
@@ -216,14 +232,15 @@ func makeRelativeURL(fullURL string) string {
 	return fullURL
 }
 
-func registerWithDashboard(server string, controller *client.Controller, displayName string) error {
-	dashboardURL := server + "/api/dashboard/register"
+func registerWithDashboard(server string, controller *client.Controller, displayName string, dashboardKey *string) error {
+	dashboardURL := server + "/api/dashboards/register"
 	
 	// Prepare request payload - matches Rust RegisterDashboardRequest exactly
 	request := RegisterDashboardRequest{
-		SessionName: controller.Name(),
-		URL:         makeRelativeURL(controller.URL()),
-		DisplayName: displayName,
+		SessionName:  controller.Name(),
+		URL:          makeRelativeURL(controller.URL()),
+		DisplayName:  displayName,
+		DashboardKey: dashboardKey,
 	}
 	
 	if writeURL := controller.WriteURL(); writeURL != nil {
@@ -245,7 +262,12 @@ func registerWithDashboard(server string, controller *client.Controller, display
 	defer resp.Body.Close()
 	
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		log.Println("✓ Session registered with dashboard")
+		var response RegisterDashboardResponse
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			return fmt.Errorf("failed to decode response: %w", err)
+		}
+		log.Println("✓ Session registered to dashboard")
+		log.Printf("➜ Dashboard URL: %s", response.DashboardURL)
 	} else {
 		log.Printf("Failed to register with dashboard: %s", resp.Status)
 	}

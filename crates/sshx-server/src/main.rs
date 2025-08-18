@@ -34,12 +34,8 @@ struct Args {
     redis_url: Option<String>,
 
     /// Hostname of this server, if running multiple servers.
-    #[clap(long)]
+    #[clap(long, env = "SSHX_HOST")]
     host: Option<String>,
-
-    /// Optional dashboard API key for protecting dashboard routes.
-    #[clap(long, env = "SSHX_DASHBOARD_KEY")]
-    dashboard_key: Option<String>,
 }
 
 #[tokio::main]
@@ -54,7 +50,6 @@ async fn start(args: Args) -> Result<()> {
     options.override_origin = args.override_origin;
     options.redis_url = args.redis_url;
     options.host = args.host;
-    options.dashboard_key = args.dashboard_key;
 
     let server = Server::new(options)?;
 

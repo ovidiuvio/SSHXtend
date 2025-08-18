@@ -7,6 +7,7 @@
   import Pagination from './Pagination.svelte';
 
   export let sessions: SessionInfo[] = [];
+  export let dashboardKey: string;
   export let onSessionsLoaded: (sessions: SessionInfo[]) => void = () => {};
 
   let loading = true;
@@ -22,7 +23,7 @@
     try {
       loading = true;
       error = '';
-      const response = await fetchSessions({
+      const response = await fetchSessions(dashboardKey, {
         page: currentPage,
         pageSize,
         search: searchQuery || undefined,
@@ -45,7 +46,7 @@
     
     try {
       refreshing = true;
-      const response = await fetchSessions({
+      const response = await fetchSessions(dashboardKey, {
         page: currentPage,
         pageSize,
         search: searchQuery || undefined,

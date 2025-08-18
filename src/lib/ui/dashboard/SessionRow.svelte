@@ -6,9 +6,9 @@
   export let session: SessionInfo;
 
   function openSession() {
-    if (session.dashboard?.url) {
+    if (session.metadata?.url) {
       // URLs are stored as relative paths, so they work with any domain
-      window.open(session.dashboard.url, '_blank');
+      window.open(session.metadata.url, '_blank');
     } else {
       // Fallback to session ID only (won't work without encryption key)
       window.open(`/s/${session.name}`, '_blank');
@@ -16,9 +16,9 @@
   }
 
   function openWriteSession() {
-    if (session.dashboard?.writeUrl) {
+    if (session.metadata?.writeUrl) {
       // URLs are stored as relative paths, so they work with any domain
-      window.open(session.dashboard.writeUrl, '_blank');
+      window.open(session.metadata.writeUrl, '_blank');
     }
   }
 
@@ -39,9 +39,9 @@
         <TerminalIcon size="12" class="text-orange-600 dark:text-orange-400" />
       </div>
       <div class="flex flex-col">
-        {#if session.dashboard?.displayName}
+        {#if session.metadata?.displayName}
           <div class="flex items-center gap-1.5">
-            <span class="text-xs font-medium text-theme-fg">{session.dashboard.displayName}</span>
+            <span class="text-xs font-medium text-theme-fg">{session.metadata.displayName}</span>
             {#if session.hasWritePassword}
               <div class="flex items-center gap-0.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-1 py-0.5 rounded">
                 <LockIcon size="8" />
@@ -94,7 +94,7 @@
   
   <td class="py-2 px-4 text-right">
     <div class="flex items-center gap-1 justify-end">
-      {#if session.dashboard?.writeUrl}
+      {#if session.metadata?.writeUrl}
         <button
           on:click={openWriteSession}
           class="p-1 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded transition-colors"
@@ -106,8 +106,8 @@
       <button
         on:click={openSession}
         class="p-1 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/30 rounded transition-colors"
-        title={session.dashboard?.url ? "Open session" : "Session URL not available"}
-        disabled={!session.dashboard?.url}
+        title={session.metadata?.url ? "Open session" : "Session URL not available"}
+        disabled={!session.metadata?.url}
       >
         <ExternalLinkIcon size="12" />
       </button>
