@@ -101,7 +101,9 @@ pub async fn connect_with_fallback(
     // First, try gRPC connection
     match try_grpc_connection(origin, &config).await {
         Ok(transport) => {
-            info!(%origin, "gRPC connection successful");
+            if config.verbose_errors {
+                info!(%origin, "gRPC connection successful");
+            }
             return Ok(ConnectionResult {
                 transport,
                 method: ConnectionMethod::Grpc,
@@ -119,7 +121,9 @@ pub async fn connect_with_fallback(
     // If gRPC failed, try WebSocket fallback
     match try_websocket_connection(origin, session_name, &config).await {
         Ok(transport) => {
-            info!(%origin, "WebSocket fallback connection successful");
+            if config.verbose_errors {
+                info!(%origin, "WebSocket fallback connection successful");
+            }
             Ok(ConnectionResult {
                 transport,
                 method: ConnectionMethod::WebSocketFallback,

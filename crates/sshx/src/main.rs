@@ -143,10 +143,14 @@ async fn register_with_dashboard(
     Ok(())
 }
 
-fn print_greeting(shell: &str, controller: &Controller) {
+fn print_greeting(shell: &str, controller: &Controller, connection_method: &sshx::connection::ConnectionMethod) {
     let version_str = match option_env!("CARGO_PKG_VERSION") {
         Some(version) => format!("v{version}"),
         None => String::from("[dev]"),
+    };
+    let transport_str = match connection_method {
+        sshx::connection::ConnectionMethod::Grpc => "gRPC",
+        sshx::connection::ConnectionMethod::WebSocketFallback => "WebSocket",
     };
     if let Some(write_url) = controller.write_url() {
         println!(
@@ -156,6 +160,7 @@ fn print_greeting(shell: &str, controller: &Controller) {
   {arr}  Read-only link: {link_v}
   {arr}  Writable link:  {link_e}
   {arr}  Shell:          {shell_v}
+  {arr}  Transport:      {transport_v}
 "#,
             sshx = Green.bold().paint("sshx"),
             version = Green.paint(&version_str),
@@ -163,20 +168,23 @@ fn print_greeting(shell: &str, controller: &Controller) {
             link_v = Cyan.underline().paint(controller.url()),
             link_e = Cyan.underline().paint(write_url),
             shell_v = Fixed(8).paint(shell),
+            transport_v = Fixed(8).paint(transport_str),
         );
     } else {
         println!(
             r#"
   {sshx} {version}
 
-  {arr}  Link:  {link_v}
-  {arr}  Shell: {shell_v}
+  {arr}  Link:      {link_v}
+  {arr}  Shell:     {shell_v}
+  {arr}  Transport: {transport_v}
 "#,
             sshx = Green.bold().paint("sshx"),
             version = Green.paint(&version_str),
             arr = Green.paint("➜"),
             link_v = Cyan.underline().paint(controller.url()),
             shell_v = Fixed(8).paint(shell),
+            transport_v = Fixed(8).paint(transport_str),
         );
     }
 }
@@ -264,7 +272,7 @@ async fn start(args: Args) -> Result<()> {
             println!("{}", controller.url());
         }
     } else {
-        print_greeting(&shell, &controller);
+        print_greeting(&shell, &controller, &connection_result.method);
     }
 
     let exit_signal = signal::ctrl_c();
