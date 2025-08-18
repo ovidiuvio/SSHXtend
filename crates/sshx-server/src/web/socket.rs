@@ -40,7 +40,15 @@ pub async fn get_session_ws(
             match state.frontend_connect(&name).await {
                 Ok(Ok(session)) => {
                     if let Err(err) = handle_socket(&mut socket, session).await {
-                        warn!(?err, "websocket exiting early");
+                        // Distinguish between normal connection closures and actual errors
+                        let err_msg = err.to_string();
+                        if err_msg.contains("Connection reset without closing handshake") 
+                            || err_msg.contains("connection was reset") 
+                            || err_msg.contains("broken pipe") {
+                            debug!(?err, "websocket closed by client");
+                        } else {
+                            warn!(?err, "websocket exiting early");
+                        }
                     } else {
                         socket.close().await.ok();
                     }
@@ -329,7 +337,15 @@ pub async fn get_cli_ws(
         let span = info_span!("cli_ws", %name);
         async move {
             if let Err(err) = handle_cli_socket(socket, state, name).await {
-                warn!(?err, "CLI websocket exiting early");
+                // Distinguish between normal connection closures and actual errors
+                let err_msg = err.to_string();
+                if err_msg.contains("Connection reset without closing handshake") 
+                    || err_msg.contains("connection was reset") 
+                    || err_msg.contains("broken pipe") {
+                    debug!(?err, "CLI websocket closed by client");
+                } else {
+                    warn!(?err, "CLI websocket exiting early");
+                }
             }
         }
         .instrument(span)
@@ -495,7 +511,12 @@ async fn handle_cli_socket(
                                                 debug!(session_name = %session_name, connection_id = %conn_id, "Starting CLI streaming task");
                                                 streaming_task_handle = Some(tokio::spawn(async move {
                                                     if let Err(err) = handle_cli_streaming(&tx, &session_clone, conn_id).await {
-                                                        warn!(session_name = %session_name, connection_id = %conn_id, ?err, "CLI streaming exiting early due to error");
+                                                        // Connection failures during ping/sync are expected when clients disconnect
+                                                        if err.contains("client disconnected") {
+                                                            debug!(session_name = %session_name, connection_id = %conn_id, "CLI streaming ended: {}", err);
+                                                        } else {
+                                                            warn!(session_name = %session_name, connection_id = %conn_id, ?err, "CLI streaming exiting early due to error");
+                                                        }
                                                     } else {
                                                         debug!(session_name = %session_name, connection_id = %conn_id, "CLI streaming task completed normally");
                                                     }
@@ -729,21 +750,21 @@ async fn handle_cli_streaming(
                 let msg = ServerMessage::Sync(session.sequence_numbers());
                 if !send_msg(tx, msg).await {
                     debug!(connection_id = %connection_id, "Client disconnected during sync message send");
-                    return Err("failed to send sync message");
+                    return Err("client disconnected during sync");
                 }
             }
             // Send periodic pings to the client.
             _ = ping_interval.tick() => {
                 if !send_msg(tx, ServerMessage::Ping(get_time_ms())).await {
                     debug!(connection_id = %connection_id, "Client disconnected during ping message send");
-                    return Err("failed to send ping message");
+                    return Err("client disconnected during ping");
                 }
             }
             // Send buffered server updates to the client.
             Ok(msg) = session.update_rx().recv() => {
                 if !send_msg(tx, msg).await {
                     debug!(connection_id = %connection_id, "Client disconnected during update message send");
-                    return Err("failed to send update message");
+                    return Err("client disconnected during update");
                 }
             }
             // Exit on a session shutdown signal.
