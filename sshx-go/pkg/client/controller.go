@@ -57,8 +57,6 @@ type ControllerConfig struct {
 	Name          string
 	Runner        Runner
 	EnableReaders bool
-	SessionID     *string
-	Secret        *string
 }
 
 // NewController constructs a new controller, connecting to the remote server.
@@ -67,12 +65,7 @@ func NewController(config ControllerConfig) (*Controller, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Generate encryption key - matches Rust implementation
-	encryptionKey := ""
-	if config.Secret != nil {
-		encryptionKey = *config.Secret
-	} else {
-		encryptionKey = randAlphanumeric(14) // 83.3 bits of entropy
-	}
+	encryptionKey := randAlphanumeric(14) // 83.3 bits of entropy
 
 	// Create encryptor in background task (matches Rust spawn_blocking)
 	encryptor := encrypt.New(encryptionKey)
@@ -99,7 +92,6 @@ func NewController(config ControllerConfig) (*Controller, error) {
 		EncryptedZeros:     encryptor.Zeros(),
 		Name:               config.Name,
 		WritePasswordHash:  writePasswordHash,
-		SessionId:          config.SessionID,
 	}
 
 	resp, err := client.Open(ctx, openReq)

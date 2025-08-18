@@ -52,15 +52,10 @@ impl Controller {
         name: &str,
         runner: Runner,
         enable_readers: bool,
-        session_id: Option<String>,
-        secret: Option<String>,
     ) -> Result<Self> {
         debug!(%origin, "connecting to server");
 
-        let encryption_key = match secret {
-            Some(s) => s,
-            None => rand_alphanumeric(14), // 83.3 bits of entropy
-        };
+        let encryption_key = rand_alphanumeric(14); // 83.3 bits of entropy
 
         let kdf_task = {
             let encryption_key = encryption_key.clone();
@@ -91,7 +86,6 @@ impl Controller {
             encrypted_zeros: encrypt.zeros().into(),
             name: name.into(),
             write_password_hash,
-            session_id,
         };
         let mut resp = client.open(req).await?.into_inner();
         resp.url = resp.url + "#" + &encryption_key;

@@ -26,8 +26,6 @@ func main() {
 		quiet         = flag.Bool("quiet", false, "Quiet mode, only prints the URL to stdout")
 		name          = flag.String("name", "", "Session name displayed in the title (defaults to user@hostname)")
 		enableReaders = flag.Bool("enable-readers", false, "Enable read-only access mode")
-		sessionID     = flag.String("session-id", "", "Optional custom session ID")
-		secret        = flag.String("secret", "", "Optional encryption key")
 		serviceCmd    = flag.String("service", "", "Service management (install|uninstall|status|start|stop)")
 		dashboard     = flag.Bool("dashboard", false, "Register with a new dashboard")
 		dashboardKey  = flag.String("dashboard-key", "", "Join existing dashboard with specified key")
@@ -56,12 +54,12 @@ Usage:
 
 	flag.Parse()
 
-	if err := runSshx(*server, *shell, *quiet, *name, *enableReaders, *sessionID, *secret, *serviceCmd, *dashboard, *dashboardKey); err != nil {
+	if err := runSshx(*server, *shell, *quiet, *name, *enableReaders, *serviceCmd, *dashboard, *dashboardKey); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func runSshx(server, shell string, quiet bool, name string, enableReaders bool, sessionID, secret, serviceCmd string, dashboard bool, dashboardKey string) error {
+func runSshx(server, shell string, quiet bool, name string, enableReaders bool, serviceCmd string, dashboard bool, dashboardKey string) error {
 	// Handle service commands if present
 	if serviceCmd != "" {
 		return handleServiceCommand(serviceCmd, server, dashboard || dashboardKey != "", enableReaders, name, shell)
@@ -88,14 +86,6 @@ func runSshx(server, shell string, quiet bool, name string, enableReaders bool, 
 		Name:          sessionName,
 		Runner:        runner,
 		EnableReaders: enableReaders,
-	}
-
-	if sessionID != "" {
-		config.SessionID = &sessionID
-	}
-
-	if secret != "" {
-		config.Secret = &secret
 	}
 
 	// Create controller
