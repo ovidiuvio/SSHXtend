@@ -4,14 +4,21 @@ use ansi_term::Color::{Cyan, Fixed, Green};
 use anyhow::Result;
 use clap::Parser;
 use serde::{Deserialize, Serialize};
-use sshx::{controller::Controller, runner::Runner, service, terminal::get_default_shell};
+use sshx::{controller::Controller, runner::Runner, service, terminal::get_default_shell, connection::{connect_with_fallback, ConnectionConfig, verbose_config}};
 use tokio::signal;
 use tracing::{error, warn};
 
 /// A secure web-based, collaborative terminal.
 #[derive(Parser, Debug)]
-#[clap(author, version, about = "
+#[clap(
+    author,
+    version,
+    about = "
 SSHX Terminal Sharing
+
+Connection:
+  Automatically tries gRPC first, then WebSocket fallback for compatibility
+  with proxies and firewalls (e.g., Cloudflare tunnels).
 
 Service Management:
   --service install    Install and enable systemd service with current configuration
@@ -23,7 +30,9 @@ Service Management:
 Examples:
   sshx --server https://your-server.com --dashboard --service install
   sshx --shell /bin/bash --name server1 --service install
-")]
+  sshx --verbose       Show connection method and detailed debugging info
+"
+)]
 struct Args {
     /// Address of the remote sshx server.
     #[clap(long, default_value = "https://sshx.io", env = "SSHX_SERVER")]
@@ -46,11 +55,15 @@ struct Args {
     #[clap(long)]
     enable_readers: bool,
 
+    /// Enable verbose output showing connection details and fallback attempts.
+    #[clap(short, long, env = "SSHX_VERBOSE")]
+    verbose: bool,
+
     /// Service management (install|uninstall|status|start|stop)
     #[clap(long, value_parser = ["install", "uninstall", "status", "start", "stop"])]
     service: Option<String>,
 
-    /// Register this session with a dashboard. 
+    /// Register this session with a dashboard.
     /// If no key provided, generates a new dashboard.
     /// If key provided, joins existing dashboard.
     #[clap(long, value_name = "KEY")]
@@ -97,32 +110,32 @@ fn make_relative_url(full_url: &str) -> String {
 
 /// Register session with the dashboard
 async fn register_with_dashboard(
-    server_url: &str, 
-    controller: &Controller, 
+    server_url: &str,
+    controller: &Controller,
     display_name: &str,
     dashboard_key: Option<String>,
 ) -> Result<()> {
     let dashboard_url = format!("{}/api/dashboards/register", server_url);
-    
+
     let request = RegisterDashboardRequest {
         session_name: controller.name().to_string(),
         url: make_relative_url(controller.url()),
-        write_url: controller.write_url().map(|u| make_relative_url(u)),
+        write_url: controller.write_url().map(make_relative_url),
         display_name: display_name.to_string(),
         dashboard_key,
     };
 
     let client = reqwest::Client::new();
-    let response = client
-        .post(&dashboard_url)
-        .json(&request)
-        .send()
-        .await?;
+    let response = client.post(&dashboard_url).json(&request).send().await?;
 
     if response.status().is_success() {
         let response_data: RegisterDashboardResponse = response.json().await?;
         println!("\n  {} Session registered to dashboard", Green.paint("✓"));
-        println!("  {} Dashboard URL: {}", Green.paint("➜"), Cyan.underline().paint(&response_data.dashboard_url));
+        println!(
+            "  {} Dashboard URL: {}",
+            Green.paint("➜"),
+            Cyan.underline().paint(&response_data.dashboard_url)
+        );
     } else {
         warn!("Failed to register with dashboard: {}", response.status());
     }
@@ -182,12 +195,12 @@ async fn start(args: Args) -> Result<()> {
                     args.name.as_deref(),
                     args.shell.as_deref(),
                 )
-            },
+            }
             "uninstall" => service::uninstall(),
             "status" => service::status(),
             "start" => service::start(),
             "stop" => service::stop(),
-            _ => Err(anyhow::anyhow!("Invalid service command"))
+            _ => Err(anyhow::anyhow!("Invalid service command")),
         };
     }
 
@@ -208,19 +221,38 @@ async fn start(args: Args) -> Result<()> {
     });
 
     let runner = Runner::Shell(shell.clone());
-    let mut controller = Controller::new(
-        &args.server,
-        &name,
-        runner,
-        args.enable_readers,
-    )
-    .await?;
+    
+    // Create connection configuration based on verbose flag
+    let connection_config = if args.verbose {
+        verbose_config()
+    } else {
+        ConnectionConfig::default()
+    };
+    
+    // Establish connection with automatic fallback
+    let connection_result = connect_with_fallback(&args.server, &name, connection_config).await?;
+    
+    // Report connection method if verbose
+    if args.verbose {
+        match connection_result.method {
+            sshx::connection::ConnectionMethod::Grpc => {
+                eprintln!("  {} Connected via gRPC", Green.paint("✓"));
+            }
+            sshx::connection::ConnectionMethod::WebSocketFallback => {
+                eprintln!("  {} Connected via WebSocket fallback", Green.paint("✓"));
+            }
+        }
+    }
+    
+    let mut controller = Controller::with_transport(&args.server, &name, runner, args.enable_readers, connection_result.transport).await?;
 
     // Register with dashboard if requested
     if let Some(dashboard_option) = args.dashboard {
         // dashboard_option is Some(key) if key provided, None if just --dashboard
         let dashboard_key = dashboard_option;
-        if let Err(e) = register_with_dashboard(&args.server, &controller, &name, dashboard_key).await {
+        if let Err(e) =
+            register_with_dashboard(&args.server, &controller, &name, dashboard_key).await
+        {
             warn!("Dashboard registration failed: {}", e);
         }
     }
@@ -249,7 +281,13 @@ async fn start(args: Args) -> Result<()> {
 fn main() -> ExitCode {
     let args = Args::parse();
 
-    let default_level = if args.quiet { "error" } else { "info" };
+    let default_level = if args.quiet { 
+        "error" 
+    } else if args.verbose {
+        "debug"
+    } else { 
+        "info" 
+    };
 
     tracing_subscriber::fmt()
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or(default_level.into()))
@@ -259,7 +297,21 @@ fn main() -> ExitCode {
     match start(args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
-            error!("{err:?}");
+            // Provide user-friendly error messages
+            let error_msg = format!("{}", err);
+            if error_msg.contains("Both gRPC and WebSocket connections failed") {
+                error!("❌ Unable to connect to the sshx server.");
+                error!("   Please check:");
+                error!("   • Server URL is correct: {}", std::env::var("SSHX_SERVER").unwrap_or_else(|_| "https://sshx.io".to_string()));
+                error!("   • Network connectivity is available");
+                error!("   • Server is running and accessible");
+                error!("   Use --verbose for detailed connection diagnostics");
+            } else if error_msg.contains("gRPC") && error_msg.contains("WebSocket") {
+                error!("❌ Connection failed: {}", err);
+                error!("   Try again with --verbose for detailed diagnostics");
+            } else {
+                error!("❌ {}", err);
+            }
             ExitCode::FAILURE
         }
     }

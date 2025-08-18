@@ -30,6 +30,7 @@ prost.workspace = true
 rand.workspace = true
 redis = { version = "0.27.6", features = ["tokio-rustls-comp", "tls-rustls-webpki-roots"] }
 serde.workspace = true
+serde_json = "1.0"
 sha2 = "0.10.7"
 sshx-core.workspace = true
 subtle = "2.5.0"

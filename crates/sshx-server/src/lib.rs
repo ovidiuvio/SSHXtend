@@ -57,7 +57,7 @@ impl Server {
     pub fn new(options: ServerOptions) -> Result<Self> {
         // Start dashboard cleanup task
         web::start_dashboard_cleanup();
-        
+
         Ok(Self {
             state: Arc::new(ServerState::new(options)?),
             shutdown: Shutdown::new(),

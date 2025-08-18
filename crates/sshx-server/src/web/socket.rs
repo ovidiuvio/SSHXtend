@@ -9,15 +9,24 @@ use axum::extract::{
 use axum::response::IntoResponse;
 use bytes::Bytes;
 use futures_util::SinkExt;
-use sshx_core::proto::{server_update::ServerMessage, NewShell, TerminalInput, TerminalSize};
+use sshx_core::proto::{
+    server_update::ServerMessage, NewShell, ServerUpdate, TerminalInput, TerminalSize,
+};
 use sshx_core::Sid;
 use subtle::ConstantTimeEq;
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
-use tracing::{error, info_span, warn, Instrument};
+use tracing::{debug, error, info_span, warn, Instrument};
 
 use crate::session::Session;
-use crate::web::protocol::{WsClient, WsServer};
+use crate::web::protocol::{
+    CliMessage, CliRequest, CliResponse, CliResponseMessage, WsClient, WsServer,
+};
+
+type ActiveSession = (
+    Arc<Session>,
+    mpsc::Receiver<Result<ServerUpdate, tonic::Status>>,
+);
 use crate::ServerState;
 
 pub async fn get_session_ws(
@@ -308,4 +317,442 @@ async fn proxy_redirect(socket: &mut WebSocket, host: &str, name: &str) -> Resul
     }
 
     Ok(())
+}
+
+/// Handle CLI WebSocket connection for direct gRPC-like operations.
+pub async fn get_cli_ws(
+    Path(name): Path<String>,
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<ServerState>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| {
+        let span = info_span!("cli_ws", %name);
+        async move {
+            if let Err(err) = handle_cli_socket(socket, state, name).await {
+                warn!(?err, "CLI websocket exiting early");
+            }
+        }
+        .instrument(span)
+    })
+}
+
+/// Handle CLI WebSocket connection with JSON-based messaging.
+async fn handle_cli_socket(
+    mut socket: WebSocket,
+    state: Arc<ServerState>,
+    name: String,
+) -> Result<()> {
+    use tracing::debug;
+    debug!(session_name = %name, "CLI WebSocket connection established");
+    use base64::prelude::{Engine as _, BASE64_STANDARD};
+    use hmac::Mac;
+    use sshx_core::{rand_alphanumeric, Sid};
+    use std::time::SystemTime;
+    use tokio::sync::mpsc;
+
+    /// Send a JSON response to the CLI client.
+    async fn send_response(socket: &mut WebSocket, response: CliResponse) -> Result<()> {
+        let json = serde_json::to_string(&response)?;
+        socket.send(Message::Text(json.into())).await?;
+        Ok(())
+    }
+
+    /// Receive a JSON request from the CLI client.
+    async fn recv_request(socket: &mut WebSocket) -> Result<Option<CliRequest>> {
+        Ok(loop {
+            match socket.recv().await.transpose()? {
+                Some(Message::Text(text)) => match serde_json::from_str::<CliRequest>(&text) {
+                    Ok(req) => break Some(req),
+                    Err(err) => {
+                        warn!(?err, "failed to parse CLI request");
+                        continue;
+                    }
+                },
+                Some(Message::Binary(_)) => warn!("ignoring binary message from CLI client"),
+                Some(_) => (), // ignore other message types, keep looping
+                None => break None,
+            }
+        })
+    }
+
+    /// Validate the client token for a session.
+    fn validate_token(mac: impl Mac, name: &str, token: &str) -> Result<(), String> {
+        if let Ok(token) = BASE64_STANDARD.decode(token) {
+            if mac.chain_update(name).verify_slice(&token).is_ok() {
+                return Ok(());
+            }
+        }
+        Err("invalid token".to_string())
+    }
+
+    /// Get current time in milliseconds.
+    fn get_time_ms() -> u64 {
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("system time is before the UNIX epoch")
+            .as_millis() as u64
+    }
+
+    // Main CLI WebSocket message loop
+    let mut active_session: Option<ActiveSession> = None;
+    let mut streaming_task_handle: Option<tokio::task::JoinHandle<()>> = None;
+    let connection_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    debug!(session_name = %name, connection_id = %connection_id, "Starting CLI message loop");
+
+    loop {
+        tokio::select! {
+            // Handle incoming CLI requests
+            request = recv_request(&mut socket) => {
+                match request? {
+                    Some(req) => {
+                        let response = match req.message {
+                            CliMessage::OpenSession { origin, encrypted_zeros, name, write_password_hash } => {
+                                let origin = state.override_origin().unwrap_or(origin);
+                                if origin.is_empty() {
+                                    CliResponse {
+                                        id: req.id,
+                                        message: CliResponseMessage::Error {
+                                            message: "origin is empty".to_string()
+                                        }
+                                    }
+                                } else {
+                                    let session_name = rand_alphanumeric(10);
+
+                                    match state.lookup(&session_name) {
+                                        Some(_) => CliResponse {
+                                            id: req.id,
+                                            message: CliResponseMessage::Error {
+                                                message: "generated duplicate ID".to_string()
+                                            }
+                                        },
+                                        None => {
+                                            let metadata = crate::session::Metadata {
+                                                encrypted_zeros,
+                                                name,
+                                                write_password_hash,
+                                            };
+                                            state.insert(&session_name, Arc::new(Session::new(metadata)));
+                                            let token = state.mac().chain_update(&session_name).finalize();
+                                            let url = format!("{origin}/s/{session_name}");
+
+                                            CliResponse {
+                                                id: req.id,
+                                                message: CliResponseMessage::OpenSession {
+                                                    name: session_name,
+                                                    token: BASE64_STANDARD.encode(token.into_bytes()),
+                                                    url,
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            CliMessage::CloseSession { name, token } => {
+                                match validate_token(state.mac(), &name, &token) {
+                                    Ok(()) => {
+                                        match state.close_session(&name).await {
+                                            Ok(()) => CliResponse {
+                                                id: req.id,
+                                                message: CliResponseMessage::CloseSession {}
+                                            },
+                                            Err(err) => CliResponse {
+                                                id: req.id,
+                                                message: CliResponseMessage::Error {
+                                                    message: err.to_string()
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(err) => CliResponse {
+                                        id: req.id,
+                                        message: CliResponseMessage::Error {
+                                            message: err
+                                        }
+                                    }
+                                }
+                            }
+
+                            CliMessage::StartChannel { name: session_name, token } => {
+                                match validate_token(state.mac(), &session_name, &token) {
+                                    Ok(()) => {
+                                        match state.backend_connect(&session_name).await {
+                                            Ok(Some(session)) => {
+                                                // Set up streaming channel similar to gRPC
+                                                let (tx, rx) = mpsc::channel::<Result<ServerUpdate, tonic::Status>>(16);
+                                                let session_clone = Arc::clone(&session);
+                                                let conn_id = connection_id;
+
+                                                // Cancel any existing streaming task
+                                                if let Some(handle) = streaming_task_handle.take() {
+                                                    debug!(session_name = %session_name, connection_id = %conn_id, "Cancelling previous streaming task");
+                                                    handle.abort();
+                                                }
+
+                                                debug!(session_name = %session_name, connection_id = %conn_id, "Starting CLI streaming task");
+                                                streaming_task_handle = Some(tokio::spawn(async move {
+                                                    if let Err(err) = handle_cli_streaming(&tx, &session_clone, conn_id).await {
+                                                        warn!(session_name = %session_name, connection_id = %conn_id, ?err, "CLI streaming exiting early due to error");
+                                                    } else {
+                                                        debug!(session_name = %session_name, connection_id = %conn_id, "CLI streaming task completed normally");
+                                                    }
+                                                }));
+
+                                                active_session = Some((session, rx));
+
+                                                CliResponse {
+                                                    id: req.id,
+                                                    message: CliResponseMessage::StartChannel {}
+                                                }
+                                            }
+                                            Ok(None) => CliResponse {
+                                                id: req.id,
+                                                message: CliResponseMessage::Error {
+                                                    message: "session not found".to_string()
+                                                }
+                                            },
+                                            Err(err) => CliResponse {
+                                                id: req.id,
+                                                message: CliResponseMessage::Error {
+                                                    message: err.to_string()
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(err) => CliResponse {
+                                        id: req.id,
+                                        message: CliResponseMessage::Error {
+                                            message: err
+                                        }
+                                    }
+                                }
+                            }
+
+                            _ => {
+                                if let Some((session, _)) = &active_session {
+                                    // Handle streaming messages similar to gRPC
+                                    match req.message {
+                                        CliMessage::TerminalData { id, data, seq } => {
+                                            session.access();
+                                            if let Err(err) = session.add_data(Sid(id), data, seq) {
+                                                CliResponse {
+                                                    id: req.id,
+                                                    message: CliResponseMessage::Error {
+                                                        message: format!("add data: {:?}", err)
+                                                    }
+                                                }
+                                            } else {
+                                                continue; // No response needed for data
+                                            }
+                                        }
+                                        CliMessage::CreatedShell { id, x, y } => {
+                                            session.access();
+                                            if let Err(err) = session.add_shell(Sid(id), (x, y)) {
+                                                CliResponse {
+                                                    id: req.id,
+                                                    message: CliResponseMessage::Error {
+                                                        message: format!("add shell: {:?}", err)
+                                                    }
+                                                }
+                                            } else {
+                                                continue; // No response needed
+                                            }
+                                        }
+                                        CliMessage::ClosedShell { id } => {
+                                            session.access();
+                                            if let Err(err) = session.close_shell(Sid(id)) {
+                                                CliResponse {
+                                                    id: req.id,
+                                                    message: CliResponseMessage::Error {
+                                                        message: format!("close shell: {:?}", err)
+                                                    }
+                                                }
+                                            } else {
+                                                continue; // No response needed
+                                            }
+                                        }
+                                        CliMessage::Pong { timestamp } => {
+                                            session.access();
+                                            let latency = get_time_ms().saturating_sub(timestamp);
+                                            session.send_latency_measurement(latency);
+                                            continue; // No response needed
+                                        }
+                                        CliMessage::Error { message } => {
+                                            error!(?message, "error received from CLI client");
+                                            continue; // No response needed
+                                        }
+                                        _ => CliResponse {
+                                            id: req.id,
+                                            message: CliResponseMessage::Error {
+                                                message: "no active session".to_string()
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    CliResponse {
+                                        id: req.id,
+                                        message: CliResponseMessage::Error {
+                                            message: "no active session".to_string()
+                                        }
+                                    }
+                                }
+                            }
+                        };
+
+                        send_response(&mut socket, response).await?;
+                    }
+                    None => {
+                        debug!(session_name = %name, connection_id = %connection_id, "CLI WebSocket connection closed by client");
+                        break;
+                    }
+                }
+            }
+
+            // Handle outgoing server messages if we have an active session
+            server_msg = async {
+                if let Some((_, rx)) = &mut active_session {
+                    rx.recv().await
+                } else {
+                    std::future::pending().await
+                }
+            } => {
+                if let Some(result) = server_msg {
+                    match result {
+                        Ok(server_update) => {
+                            if let Some(server_message) = server_update.server_message {
+                                let response = convert_server_message_to_cli(server_message);
+                                send_response(&mut socket, response).await?;
+                            }
+                        }
+                        Err(err) => {
+                            let response = CliResponse {
+                                id: "server_error".to_string(),
+                                message: CliResponseMessage::Error {
+                                    message: err.to_string()
+                                }
+                            };
+                            send_response(&mut socket, response).await?;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Clean up any remaining streaming task
+    if let Some(handle) = streaming_task_handle.take() {
+        debug!(session_name = %name, connection_id = %connection_id, "Cleaning up streaming task on connection close");
+        handle.abort();
+    }
+
+    debug!(session_name = %name, connection_id = %connection_id, "CLI WebSocket handler exiting");
+    Ok(())
+}
+
+/// Convert gRPC ServerMessage to CLI response format.
+fn convert_server_message_to_cli(message: ServerMessage) -> CliResponse {
+    let response_message = match message {
+        ServerMessage::Input(input) => CliResponseMessage::TerminalInput {
+            id: input.id,
+            data: input.data,
+            offset: input.offset,
+        },
+        ServerMessage::CreateShell(new_shell) => CliResponseMessage::CreateShell {
+            id: new_shell.id,
+            x: new_shell.x,
+            y: new_shell.y,
+        },
+        ServerMessage::CloseShell(id) => CliResponseMessage::CloseShell { id },
+        ServerMessage::Sync(seq_nums) => CliResponseMessage::Sync {
+            sequence_numbers: seq_nums.map,
+        },
+        ServerMessage::Resize(resize) => CliResponseMessage::Resize {
+            id: resize.id,
+            rows: resize.rows,
+            cols: resize.cols,
+        },
+        ServerMessage::Ping(timestamp) => CliResponseMessage::Ping { timestamp },
+        ServerMessage::Error(err) => CliResponseMessage::Error { message: err },
+    };
+
+    CliResponse {
+        id: "server_update".to_string(),
+        message: response_message,
+    }
+}
+
+/// Handle CLI streaming similar to gRPC handle_streaming function.
+async fn handle_cli_streaming(
+    tx: &mpsc::Sender<Result<ServerUpdate, tonic::Status>>,
+    session: &Session,
+    connection_id: u128,
+) -> Result<(), &'static str> {
+    debug!(connection_id = %connection_id, "CLI streaming task started");
+    use std::time::{Duration, SystemTime};
+    use tokio::time::{self, MissedTickBehavior};
+
+    const SYNC_INTERVAL: Duration = Duration::from_secs(5);
+    const PING_INTERVAL: Duration = Duration::from_secs(2);
+
+    /// Send a server message to the client.
+    async fn send_msg(
+        tx: &mpsc::Sender<Result<ServerUpdate, tonic::Status>>,
+        message: ServerMessage,
+    ) -> bool {
+        let update = Ok(ServerUpdate {
+            server_message: Some(message),
+        });
+        tx.send(update).await.is_ok()
+    }
+
+    /// Get current time in milliseconds.
+    fn get_time_ms() -> u64 {
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("system time is before the UNIX epoch")
+            .as_millis() as u64
+    }
+
+    let mut sync_interval = time::interval(SYNC_INTERVAL);
+    sync_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    let mut ping_interval = time::interval(PING_INTERVAL);
+    ping_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    loop {
+        tokio::select! {
+            // Send periodic sync messages to the client.
+            _ = sync_interval.tick() => {
+                let msg = ServerMessage::Sync(session.sequence_numbers());
+                if !send_msg(tx, msg).await {
+                    debug!(connection_id = %connection_id, "Client disconnected during sync message send");
+                    return Err("failed to send sync message");
+                }
+            }
+            // Send periodic pings to the client.
+            _ = ping_interval.tick() => {
+                if !send_msg(tx, ServerMessage::Ping(get_time_ms())).await {
+                    debug!(connection_id = %connection_id, "Client disconnected during ping message send");
+                    return Err("failed to send ping message");
+                }
+            }
+            // Send buffered server updates to the client.
+            Ok(msg) = session.update_rx().recv() => {
+                if !send_msg(tx, msg).await {
+                    debug!(connection_id = %connection_id, "Client disconnected during update message send");
+                    return Err("failed to send update message");
+                }
+            }
+            // Exit on a session shutdown signal.
+            _ = session.terminated() => {
+                let msg = String::from("disconnecting because session is closed");
+                send_msg(tx, ServerMessage::Error(msg)).await;
+                debug!(connection_id = %connection_id, "Session terminated, closing streaming");
+                return Ok(());
+            }
+        };
+    }
 }
