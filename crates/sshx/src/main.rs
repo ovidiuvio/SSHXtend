@@ -85,7 +85,15 @@ struct RegisterDashboardRequest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RegisterDashboardResponse {
+    dashboard_key: String,
     dashboard_url: String,
+}
+
+/// Dashboard information for display
+#[derive(Debug)]
+struct DashboardInfo {
+    key: String,
+    url: String,
 }
 
 /// Extract relative URL from full URL (removes domain for reverse proxy compatibility)
@@ -114,7 +122,7 @@ async fn register_with_dashboard(
     controller: &Controller,
     display_name: &str,
     dashboard_key: Option<String>,
-) -> Result<()> {
+) -> Result<DashboardInfo> {
     let dashboard_url = format!("{}/api/dashboards/register", server_url);
 
     let request = RegisterDashboardRequest {
@@ -131,19 +139,18 @@ async fn register_with_dashboard(
     if response.status().is_success() {
         let response_data: RegisterDashboardResponse = response.json().await?;
         println!("\n  {} Session registered to dashboard", Green.paint("✓"));
-        println!(
-            "  {} Dashboard URL: {}",
-            Green.paint("➜"),
-            Cyan.underline().paint(&response_data.dashboard_url)
-        );
+        
+        Ok(DashboardInfo {
+            key: response_data.dashboard_key,
+            url: response_data.dashboard_url,
+        })
     } else {
         warn!("Failed to register with dashboard: {}", response.status());
+        Err(anyhow::anyhow!("Dashboard registration failed with status: {}", response.status()))
     }
-
-    Ok(())
 }
 
-fn print_greeting(shell: &str, controller: &Controller, connection_method: &sshx::connection::ConnectionMethod) {
+fn print_greeting(shell: &str, controller: &Controller, connection_method: &sshx::connection::ConnectionMethod, dashboard_info: Option<&DashboardInfo>) {
     let version_str = match option_env!("CARGO_PKG_VERSION") {
         Some(version) => format!("v{version}"),
         None => String::from("[dev]"),
@@ -153,8 +160,31 @@ fn print_greeting(shell: &str, controller: &Controller, connection_method: &sshx
         sshx::connection::ConnectionMethod::WebSocketFallback => "WebSocket",
     };
     if let Some(write_url) = controller.write_url() {
-        println!(
-            r#"
+        if let Some(dashboard) = dashboard_info {
+            println!(
+                r#"
+  {sshx} {version}
+
+  {arr}  Read-only link: {link_v}
+  {arr}  Writable link:  {link_e}
+  {arr}  Dashboard:      {dashboard_url_v}
+  {arr}  Dashboard ID:   {dashboard_id_v}
+  {arr}  Shell:          {shell_v}
+  {arr}  Transport:      {transport_v}
+"#,
+                sshx = Green.bold().paint("sshx"),
+                version = Green.paint(&version_str),
+                arr = Green.paint("➜"),
+                link_v = Cyan.underline().paint(controller.url()),
+                link_e = Cyan.underline().paint(write_url),
+                dashboard_url_v = Cyan.underline().paint(&dashboard.url),
+                dashboard_id_v = Fixed(8).paint(&dashboard.key),
+                shell_v = Fixed(8).paint(shell),
+                transport_v = Fixed(8).paint(transport_str),
+            );
+        } else {
+            println!(
+                r#"
   {sshx} {version}
 
   {arr}  Read-only link: {link_v}
@@ -162,30 +192,53 @@ fn print_greeting(shell: &str, controller: &Controller, connection_method: &sshx
   {arr}  Shell:          {shell_v}
   {arr}  Transport:      {transport_v}
 "#,
-            sshx = Green.bold().paint("sshx"),
-            version = Green.paint(&version_str),
-            arr = Green.paint("➜"),
-            link_v = Cyan.underline().paint(controller.url()),
-            link_e = Cyan.underline().paint(write_url),
-            shell_v = Fixed(8).paint(shell),
-            transport_v = Fixed(8).paint(transport_str),
-        );
+                sshx = Green.bold().paint("sshx"),
+                version = Green.paint(&version_str),
+                arr = Green.paint("➜"),
+                link_v = Cyan.underline().paint(controller.url()),
+                link_e = Cyan.underline().paint(write_url),
+                shell_v = Fixed(8).paint(shell),
+                transport_v = Fixed(8).paint(transport_str),
+            );
+        }
     } else {
-        println!(
-            r#"
+        if let Some(dashboard) = dashboard_info {
+            println!(
+                r#"
+  {sshx} {version}
+
+  {arr}  Link:         {link_v}
+  {arr}  Dashboard:    {dashboard_url_v}
+  {arr}  Dashboard ID: {dashboard_id_v}
+  {arr}  Shell:        {shell_v}
+  {arr}  Transport:    {transport_v}
+"#,
+                sshx = Green.bold().paint("sshx"),
+                version = Green.paint(&version_str),
+                arr = Green.paint("➜"),
+                link_v = Cyan.underline().paint(controller.url()),
+                dashboard_url_v = Cyan.underline().paint(&dashboard.url),
+                dashboard_id_v = Fixed(8).paint(&dashboard.key),
+                shell_v = Fixed(8).paint(shell),
+                transport_v = Fixed(8).paint(transport_str),
+            );
+        } else {
+            println!(
+                r#"
   {sshx} {version}
 
   {arr}  Link:      {link_v}
   {arr}  Shell:     {shell_v}
   {arr}  Transport: {transport_v}
 "#,
-            sshx = Green.bold().paint("sshx"),
-            version = Green.paint(&version_str),
-            arr = Green.paint("➜"),
-            link_v = Cyan.underline().paint(controller.url()),
-            shell_v = Fixed(8).paint(shell),
-            transport_v = Fixed(8).paint(transport_str),
-        );
+                sshx = Green.bold().paint("sshx"),
+                version = Green.paint(&version_str),
+                arr = Green.paint("➜"),
+                link_v = Cyan.underline().paint(controller.url()),
+                shell_v = Fixed(8).paint(shell),
+                transport_v = Fixed(8).paint(transport_str),
+            );
+        }
     }
 }
 
@@ -255,15 +308,19 @@ async fn start(args: Args) -> Result<()> {
     let mut controller = Controller::with_transport(&args.server, &name, runner, args.enable_readers, connection_result.transport).await?;
 
     // Register with dashboard if requested
-    if let Some(dashboard_option) = args.dashboard {
+    let dashboard_info = if let Some(dashboard_option) = args.dashboard {
         // dashboard_option is Some(key) if key provided, None if just --dashboard
         let dashboard_key = dashboard_option;
-        if let Err(e) =
-            register_with_dashboard(&args.server, &controller, &name, dashboard_key).await
-        {
-            warn!("Dashboard registration failed: {}", e);
+        match register_with_dashboard(&args.server, &controller, &name, dashboard_key).await {
+            Ok(info) => Some(info),
+            Err(e) => {
+                warn!("Dashboard registration failed: {}", e);
+                None
+            }
         }
-    }
+    } else {
+        None
+    };
 
     if args.quiet {
         if let Some(write_url) = controller.write_url() {
@@ -272,7 +329,7 @@ async fn start(args: Args) -> Result<()> {
             println!("{}", controller.url());
         }
     } else {
-        print_greeting(&shell, &controller, &connection_result.method);
+        print_greeting(&shell, &controller, &connection_result.method, dashboard_info.as_ref());
     }
 
     let exit_signal = signal::ctrl_c();
