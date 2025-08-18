@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{any, get, get_service, post};
 use axum::{Json, Router};
 use once_cell::sync::Lazy;
@@ -204,6 +204,7 @@ pub fn start_dashboard_cleanup() {
 /// Handler for registering a session with a dashboard
 async fn register_dashboard(
     State(state): axum::extract::State<Arc<ServerState>>,
+    headers: HeaderMap,
     Json(request): Json<RegisterDashboardRequest>,
 ) -> Result<Json<RegisterDashboardResponse>, StatusCode> {
     let now = SystemTime::now()
@@ -244,8 +245,11 @@ async fn register_dashboard(
         .write()
         .insert(request.session_name, metadata);
 
-    // Build dashboard URL
-    let host = state.options().host.as_deref().unwrap_or("localhost");
+    // Build dashboard URL - use configured host, fallback to Host header, then localhost
+    // This allows dashboard URLs to work correctly behind reverse proxies
+    let host = state.options().host.as_deref()
+        .or_else(|| headers.get("host").and_then(|h| h.to_str().ok()))
+        .unwrap_or("localhost");
     let dashboard_url = format!("https://{}/d/{}", host, dashboard_key);
 
     Ok(Json(RegisterDashboardResponse {
