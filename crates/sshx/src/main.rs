@@ -72,7 +72,6 @@ struct RegisterDashboardRequest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RegisterDashboardResponse {
-    dashboard_key: String,
     dashboard_url: String,
 }
 
