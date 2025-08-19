@@ -81,7 +81,14 @@ impl ServerState {
 
     /// Lookup a local session by name.
     pub fn lookup(&self, name: &str) -> Option<Arc<Session>> {
-        self.store.get(name).map(|s| s.clone())
+        let result = self.store.get(name).map(|s| s.clone());
+        tracing::debug!(
+            session_name = %name,
+            found = result.is_some(),
+            total_sessions = self.store.len(),
+            "Session lookup attempt"
+        );
+        result
     }
 
     /// Insert a session into the local store.
@@ -152,19 +159,28 @@ impl ServerState {
         &self,
         name: &str,
     ) -> Result<Result<Arc<Session>, Option<String>>> {
+        tracing::debug!(session_name = %name, "Frontend attempting to connect to session");
+        
         if let Some(session) = self.lookup(name) {
+            tracing::debug!(session_name = %name, "Found session locally");
             return Ok(Ok(session));
         }
+
+        tracing::debug!(session_name = %name, "Session not found locally");
 
         if let Some(mesh) = &self.mesh {
             let mut owner = mesh.get_owner(name).await?;
             if owner.is_some() && owner.as_deref() == mesh.host() {
                 // Do not redirect back to the same server.
+                tracing::debug!(session_name = %name, "Session owner is this host, not redirecting");
                 owner = None;
+            } else if let Some(ref host) = owner {
+                tracing::debug!(session_name = %name, redirect_host = %host, "Session found on different host, redirecting");
             }
             return Ok(Err(owner));
         }
 
+        tracing::debug!(session_name = %name, "No mesh configured, session not found");
         Ok(Err(None))
     }
 

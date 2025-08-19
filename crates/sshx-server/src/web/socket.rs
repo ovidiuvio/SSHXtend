@@ -115,8 +115,16 @@ async fn handle_socket(socket: &mut WebSocket, session: Arc<Session>) -> Result<
 
     let can_write = match recv(socket).await? {
         Some(WsClient::Authenticate(bytes, write_password_bytes)) => {
+            tracing::debug!(
+                browser_bytes_len = bytes.len(),
+                stored_bytes_len = metadata.encrypted_zeros.len(),
+                bytes_equal = bool::from(bytes.ct_eq(metadata.encrypted_zeros.as_ref())),
+                "Browser authentication attempt"
+            );
+            
             // Constant-time comparison of bytes, converting Choice to bool
             if !bool::from(bytes.ct_eq(metadata.encrypted_zeros.as_ref())) {
+                tracing::debug!("Authentication failed: encrypted_zeros mismatch");
                 send(socket, WsServer::InvalidAuth()).await?;
                 return Ok(());
             }
@@ -426,6 +434,10 @@ async fn handle_cli_socket(
                     Some(req) => {
                         let response = match req.message {
                             CliMessage::OpenSession { origin, encrypted_zeros, name, write_password_hash } => {
+                                tracing::debug!(
+                                    encrypted_zeros_len = encrypted_zeros.len(),
+                                    "Received OpenSession request with encrypted_zeros"
+                                );
                                 let origin = state.override_origin().unwrap_or(origin);
                                 if origin.is_empty() {
                                     CliResponse {
@@ -446,10 +458,15 @@ async fn handle_cli_socket(
                                         },
                                         None => {
                                             let metadata = crate::session::Metadata {
-                                                encrypted_zeros,
+                                                encrypted_zeros: encrypted_zeros.clone(),
                                                 name,
                                                 write_password_hash,
                                             };
+                                            tracing::debug!(
+                                                session_name = %session_name,
+                                                encrypted_zeros_len = encrypted_zeros.len(),
+                                                "WebSocket CLI session created with encrypted_zeros"
+                                            );
                                             state.insert(&session_name, Arc::new(Session::new(metadata)));
                                             let token = state.mac().chain_update(&session_name).finalize();
                                             let url = format!("{origin}/s/{session_name}");

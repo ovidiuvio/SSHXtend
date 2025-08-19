@@ -40,7 +40,9 @@ const (
 // Returns:
 //   - ConnectionResult containing the transport and connection method used
 func ConnectWithFallback(origin, sessionName string, config ConnectionConfig) (*ConnectionResult, error) {
-	log.Printf("Attempting connection to %s with fallback for session %s", origin, sessionName)
+	if config.VerboseErrors {
+		log.Printf("attempting connection with fallback to %s", origin)
+	}
 
 	// Apply default timeouts if not specified
 	if config.GrpcTimeout == 0 {
@@ -53,7 +55,7 @@ func ConnectWithFallback(origin, sessionName string, config ConnectionConfig) (*
 	// First, try gRPC connection
 	if transport, err := tryGrpcConnection(origin, config); err == nil {
 		if config.VerboseErrors {
-			log.Printf("✓ gRPC connection successful to %s", origin)
+			log.Printf("gRPC connection successful to %s", origin)
 		}
 		return &ConnectionResult{
 			Transport: transport,
@@ -61,16 +63,14 @@ func ConnectWithFallback(origin, sessionName string, config ConnectionConfig) (*
 		}, nil
 	} else {
 		if config.VerboseErrors {
-			log.Printf("⚠ gRPC connection failed to %s: %v, attempting WebSocket fallback", origin, err)
-		} else {
-			log.Printf("gRPC connection failed, attempting WebSocket fallback: %v", err)
+			log.Printf("gRPC connection failed to %s: %v, attempting WebSocket fallback", origin, err)
 		}
 	}
 
 	// If gRPC failed, try WebSocket fallback
 	if transport, err := tryWebSocketConnection(origin, sessionName, config); err == nil {
 		if config.VerboseErrors {
-			log.Printf("✓ WebSocket fallback connection successful to %s", origin)
+			log.Printf("WebSocket fallback connection successful to %s", origin)
 		}
 		return &ConnectionResult{
 			Transport: transport,
@@ -78,9 +78,9 @@ func ConnectWithFallback(origin, sessionName string, config ConnectionConfig) (*
 		}, nil
 	} else {
 		if config.VerboseErrors {
-			log.Printf("✗ WebSocket fallback also failed to %s: %v", origin, err)
+			log.Printf("WebSocket fallback also failed to %s: %v", origin, err)
 		}
-		return nil, fmt.Errorf("both gRPC and WebSocket connections failed for %s: %w", origin, err)
+		return nil, fmt.Errorf("Both gRPC and WebSocket connections failed for %s", origin)
 	}
 }
 
@@ -88,45 +88,64 @@ func ConnectWithFallback(origin, sessionName string, config ConnectionConfig) (*
 //
 // This function not only connects to the gRPC endpoint but also performs
 // a real connectivity test by attempting an Open call to ensure the
-// connection is actually working.
+// connection is actually working. This matches the Rust implementation exactly.
 func tryGrpcConnection(origin string, config ConnectionConfig) (SshxTransport, error) {
-	log.Printf("Attempting gRPC connection to %s (timeout: %v)", origin, config.GrpcTimeout)
+	if config.VerboseErrors {
+		log.Printf("Attempting gRPC connection to %s (timeout: %v)", origin, config.GrpcTimeout)
+	}
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), config.GrpcTimeout)
 	defer cancel()
 
-	// Attempt to connect
+	// First, test connectivity with a separate connection to avoid consuming the main transport
+	if config.VerboseErrors {
+		log.Printf("Testing gRPC connectivity to %s with Open call", origin)
+	}
+	testTransport, err := ConnectGrpc(origin)
+	if err != nil {
+		return nil, fmt.Errorf("gRPC connection failed: %w", err)
+	}
+
+	testRequest := &proto.OpenRequest{
+		Origin:         origin,
+		EncryptedZeros: make([]byte, 32), // Dummy encrypted zeros for connectivity test
+		Name:           "connectivity-test",
+		WritePasswordHash: nil,
+	}
+
+	// Test the connection with the dummy request
+	_, err = testTransport.Open(ctx, testRequest)
+	if err != nil {
+		testTransport.Cleanup()
+		if config.VerboseErrors {
+			log.Printf("gRPC connectivity test failed with error: %v", err)
+		}
+		return nil, fmt.Errorf("gRPC connectivity test failed: %w", err)
+	}
+
+	// Clean up test transport
+	testTransport.Cleanup()
+
+	if config.VerboseErrors {
+		log.Printf("gRPC connectivity test succeeded for %s", origin)
+	}
+
+	// Now create a fresh transport for actual use (don't reuse the test transport)
 	transport, err := ConnectGrpc(origin)
 	if err != nil {
 		return nil, fmt.Errorf("gRPC connection failed: %w", err)
 	}
 
-	// Test connectivity with a dummy Open request
-	// This ensures the connection is actually working, not just established
-	log.Printf("Testing gRPC connectivity to %s with Open call", origin)
-	testRequest := &proto.OpenRequest{
-		Origin:         origin,
-		EncryptedZeros: make([]byte, 32), // Dummy encrypted zeros for connectivity test
-		Name:           "connectivity-test",
-	}
-
-	// We expect this to either succeed or fail with a meaningful error
-	// Either way, it proves the gRPC connection is working
-	_, err = transport.Open(ctx, testRequest)
-	if err != nil {
-		transport.Cleanup()
-		return nil, fmt.Errorf("gRPC connectivity test failed: %w", err)
-	}
-
-	log.Printf("gRPC connectivity test succeeded for %s", origin)
 	return transport, nil
 }
 
 // tryWebSocketConnection attempts to establish a WebSocket connection.
 func tryWebSocketConnection(origin, sessionName string, config ConnectionConfig) (SshxTransport, error) {
 	wsURL := GrpcToWebSocketURL(origin, sessionName)
-	log.Printf("Attempting WebSocket connection to %s (timeout: %v)", wsURL, config.WebSocketTimeout)
+	if config.VerboseErrors {
+		log.Printf("Attempting WebSocket connection to %s (timeout: %v)", wsURL, config.WebSocketTimeout)
+	}
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), config.WebSocketTimeout)
