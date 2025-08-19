@@ -413,7 +413,7 @@ func (c *Controller) spawnShellTask(id uint32, center [2]int32) {
 			}
 		}()
 
-		log.Printf("spawning new shell %d using %s transport", id, c.transport.ConnectionType())
+		util.DebugLog("spawning new shell %d using %s transport", id, c.transport.ConnectionType())
 
 		// Send shell creation acknowledgment - matches Rust NewShell exactly
 		newShell := &proto.NewShell{
