@@ -12,6 +12,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"sshx-go/pkg/proto"
+	"sshx-go/pkg/util"
 )
 
 // CliRequest represents a CLI WebSocket request message with correlation ID.
@@ -330,8 +331,8 @@ func (w *WebSocketTransport) Open(ctx context.Context, request *proto.OpenReques
 
 	// Debug: Log the request being sent
 	jsonBytes, _ := json.Marshal(req)
-	log.Printf("WebSocket sending Open request: %s", string(jsonBytes))
-	log.Printf("Go client encrypted_zeros length: %d bytes", len(request.EncryptedZeros))
+	util.DebugLog("WebSocket sending Open request: %s", string(jsonBytes))
+	util.DebugLog("Go client encrypted_zeros length: %d bytes", len(request.EncryptedZeros))
 
 	response, err := w.sendRequestWithResponse(ctx, req, 30*time.Second)
 	if err != nil {
@@ -340,9 +341,9 @@ func (w *WebSocketTransport) Open(ctx context.Context, request *proto.OpenReques
 
 	// Handle tagged union response format
 	if response.OpenSession != nil {
-		log.Printf("WebSocket Open response: Name=%s, Token=%s, URL=%s", 
+		util.DebugLog("WebSocket Open response: Name=%s, Token=%s, URL=%s", 
 			response.OpenSession.Name, response.OpenSession.Token, response.OpenSession.URL)
-		log.Printf("WebSocket session validation - Server returned session name: %s", response.OpenSession.Name)
+		util.DebugLog("WebSocket session validation - Server returned session name: %s", response.OpenSession.Name)
 		return &proto.OpenResponse{
 			Name:  response.OpenSession.Name,
 			Token: response.OpenSession.Token,
@@ -366,7 +367,7 @@ func (w *WebSocketTransport) Channel(ctx context.Context) (chan *proto.ServerUpd
 	// Handle the protocol in a separate goroutine
 	go func() {
 		defer func() {
-			log.Printf("WebSocket channel protocol goroutine exiting")
+			util.DebugLog("WebSocket channel protocol goroutine exiting")
 			close(serverChan)
 		}()
 		
@@ -383,10 +384,10 @@ func (w *WebSocketTransport) Channel(ctx context.Context) (chan *proto.ServerUpd
 				hello = firstUpdate.GetHello()
 				if hello != "" {
 					helloReceived = true
-					log.Printf("WebSocket received Hello: %s", hello)
+					util.DebugLog("WebSocket received Hello: %s", hello)
 				} else {
 					// Not a Hello, this is an error in protocol
-					log.Printf("WebSocket received non-Hello message while waiting for Hello: %T", firstUpdate.ClientMessage)
+					util.DebugLog("WebSocket received non-Hello message while waiting for Hello: %T", firstUpdate.ClientMessage)
 					return
 				}
 			case <-ctx.Done():
@@ -423,7 +424,7 @@ func (w *WebSocketTransport) Channel(ctx context.Context) (chan *proto.ServerUpd
 		
 		// Verify we got the expected response
 		if response.StartChannel != nil {
-			log.Printf("WebSocket channel started successfully")
+			util.DebugLog("WebSocket channel started successfully")
 		} else if response.Error != nil {
 			log.Printf("Server error starting channel: %s", response.Error.Message)
 			return
@@ -433,13 +434,13 @@ func (w *WebSocketTransport) Channel(ctx context.Context) (chan *proto.ServerUpd
 		}
 		
 		// Now handle remaining outbound messages
-		log.Printf("WebSocket entering streaming phase")
+		util.DebugLog("WebSocket entering streaming phase")
 		var messageCount int64
 		for {
 			select {
 			case update, ok := <-clientChan:
 				if !ok {
-					log.Printf("WebSocket clientChan closed after %d messages", messageCount)
+					util.DebugLog("WebSocket clientChan closed after %d messages", messageCount)
 					return
 				}
 				
@@ -489,7 +490,7 @@ func (w *WebSocketTransport) Channel(ctx context.Context) (chan *proto.ServerUpd
 					log.Printf("WebSocket failed to send outbound message #%d: %v", messageCount, err)
 					return
 				}
-				log.Printf("WebSocket sent streaming message #%d: %s", messageCount, string(jsonData))
+				util.DebugLog("WebSocket sent streaming message #%d: %s", messageCount, string(jsonData))
 				
 			case <-ctx.Done():
 				return
@@ -502,7 +503,7 @@ func (w *WebSocketTransport) Channel(ctx context.Context) (chan *proto.ServerUpd
 	// Start goroutine to forward server messages
 	go func() {
 		defer func() {
-			log.Printf("WebSocket server message forwarder exiting")
+			util.DebugLog("WebSocket server message forwarder exiting")
 		}()
 		
 		var serverMessageCount int64
@@ -510,14 +511,14 @@ func (w *WebSocketTransport) Channel(ctx context.Context) (chan *proto.ServerUpd
 			select {
 			case update, ok := <-w.serverUpdates:
 				if !ok {
-					log.Printf("WebSocket serverUpdates channel closed after %d messages", serverMessageCount)
+					util.DebugLog("WebSocket serverUpdates channel closed after %d messages", serverMessageCount)
 					return
 				}
 				serverMessageCount++
-				log.Printf("WebSocket forwarding server message #%d: %T to controller", serverMessageCount, update.ServerMessage)
+				util.DebugLog("WebSocket forwarding server message #%d: %T to controller", serverMessageCount, update.ServerMessage)
 				select {
 				case serverChan <- update:
-					log.Printf("WebSocket successfully forwarded server message #%d", serverMessageCount)
+					util.DebugLog("WebSocket successfully forwarded server message #%d", serverMessageCount)
 				case <-ctx.Done():
 					return
 				case <-w.done:
@@ -686,16 +687,16 @@ func (w *WebSocketTransport) handleIncomingMessage(message []byte) error {
 	if err := json.Unmarshal(message, &cliResponse); err == nil && cliResponse.ID != "" {
 		// Handle streaming messages (sent with "server_update" ID) - matches Rust implementation
 		if cliResponse.ID == "server_update" {
-			log.Printf("WebSocket received server_update message: %+v", cliResponse.Message)
+			util.DebugLog("WebSocket received server_update message: %+v", cliResponse.Message)
 			serverUpdate, err := CliResponseToServerUpdate(cliResponse.Message)
 			if err != nil {
 				return fmt.Errorf("failed to convert CLI response to server update: %w", err)
 			}
-			log.Printf("WebSocket converted to ServerUpdate: %T", serverUpdate.ServerMessage)
+			util.DebugLog("WebSocket converted to ServerUpdate: %T", serverUpdate.ServerMessage)
 
 			select {
 			case w.serverUpdates <- serverUpdate:
-				log.Printf("WebSocket forwarded server update to channel")
+				util.DebugLog("WebSocket forwarded server update to channel")
 			case <-w.done:
 			}
 			return nil
