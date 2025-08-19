@@ -106,3 +106,5 @@ To support more terminals, you would need to:
 - Disable WebGL addon (reduces performance but removes limit)
 - Implement hybrid rendering (WebGL for active terminals, canvas for others)
 - Use context pooling/recycling for inactive terminals
+
+- For the websocket transport, the server is expecting/sending JSON arrays, not base64 strings.

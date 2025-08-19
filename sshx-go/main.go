@@ -20,22 +20,43 @@ import (
 	"sshx-go/pkg/transport"
 )
 
+// ANSI color codes to match Rust ansi_term crate
+const (
+	Green       = "\033[32m"
+	BoldGreen   = "\033[1;32m" 
+	Cyan        = "\033[36m"
+	UnderlineCyan = "\033[4;36m"
+	Fixed8      = "\033[38;5;8m"  // Gray color for secondary info
+	Reset       = "\033[0m"
+)
+
 func main() {
+	// Get default values from environment variables - matches Rust implementation
+	defaultServer := os.Getenv("SSHX_SERVER")
+	if defaultServer == "" {
+		defaultServer = "https://sshx.io"
+	}
+	
+	defaultVerbose := os.Getenv("SSHX_VERBOSE") != ""
+
 	var (
-		server        = flag.String("server", "https://sshx.io", "Address of the remote sshx server")
+		server        = flag.String("server", defaultServer, "Address of the remote sshx server")
 		shell         = flag.String("shell", "", "Local shell command to run in the terminal")
 		quiet         = flag.Bool("quiet", false, "Quiet mode, only prints the URL to stdout")
 		name          = flag.String("name", "", "Session name displayed in the title (defaults to user@hostname)")
-		enableReaders = flag.Bool("enable-readers", false, "Enable read-only access mode")
+		enableReaders = flag.Bool("enable-readers", false, "Enable read-only access mode - generates separate URLs for viewers and editors")
 		serviceCmd    = flag.String("service", "", "Service management (install|uninstall|status|start|stop)")
 		dashboard     = flag.Bool("dashboard", false, "Register with a new dashboard")
 		dashboardKey  = flag.String("dashboard-key", "", "Join existing dashboard with specified key")
-		useTransport  = flag.Bool("use-transport", false, "Use new transport abstraction with gRPC->WebSocket fallback")
-		verbose       = flag.Bool("verbose", false, "Enable verbose connection reporting")
+		verbose       = flag.Bool("verbose", defaultVerbose, "Enable verbose output showing connection details and fallback attempts")
 	)
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, `SSHX Terminal Sharing
+		fmt.Fprintf(os.Stderr, `A secure web-based, collaborative terminal.
+
+Connection:
+  Automatically tries gRPC first, then WebSocket fallback for compatibility
+  with proxies and firewalls (e.g., Cloudflare tunnels).
 
 Service Management:
   --service install    Install and enable systemd service with current configuration
@@ -45,10 +66,9 @@ Service Management:
   --service stop       Stop service
 
 Examples:
-  sshx --dashboard                            # Create new dashboard
-  sshx --dashboard-key abc123                  # Join existing dashboard
   sshx --server https://your-server.com --dashboard --service install
   sshx --shell /bin/bash --name server1 --service install
+  sshx --verbose       Show connection method and detailed debugging info
 
 Usage:
 `)
@@ -57,12 +77,31 @@ Usage:
 
 	flag.Parse()
 
-	if err := runSshx(*server, *shell, *quiet, *name, *enableReaders, *serviceCmd, *dashboard, *dashboardKey, *useTransport, *verbose); err != nil {
-		log.Fatal(err)
+	if err := runSshx(*server, *shell, *quiet, *name, *enableReaders, *serviceCmd, *dashboard, *dashboardKey, *verbose); err != nil {
+		// Provide user-friendly error messages - matches Rust implementation
+		errorMsg := err.Error()
+		if strings.Contains(errorMsg, "Both gRPC and WebSocket connections failed") {
+			fmt.Fprintf(os.Stderr, "❌ Unable to connect to the sshx server.\n")
+			fmt.Fprintf(os.Stderr, "   Please check:\n")
+			fmt.Fprintf(os.Stderr, "   • Server URL is correct: %s\n", *server)
+			fmt.Fprintf(os.Stderr, "   • Network connectivity is available\n")
+			fmt.Fprintf(os.Stderr, "   • Server is running and accessible\n")
+			if !*verbose {
+				fmt.Fprintf(os.Stderr, "   Use --verbose for detailed connection diagnostics\n")
+			}
+		} else if strings.Contains(errorMsg, "gRPC") && strings.Contains(errorMsg, "WebSocket") {
+			fmt.Fprintf(os.Stderr, "❌ Connection failed: %v\n", err)
+			if !*verbose {
+				fmt.Fprintf(os.Stderr, "   Try again with --verbose for detailed diagnostics\n")
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "❌ %v\n", err)
+		}
+		os.Exit(1)
 	}
 }
 
-func runSshx(server, shell string, quiet bool, name string, enableReaders bool, serviceCmd string, dashboard bool, dashboardKey string, useTransport bool, verbose bool) error {
+func runSshx(server, shell string, quiet bool, name string, enableReaders bool, serviceCmd string, dashboard bool, dashboardKey string, verbose bool) error {
 	// Handle service commands if present
 	if serviceCmd != "" {
 		return handleServiceCommand(serviceCmd, server, dashboard || dashboardKey != "", enableReaders, name, shell)
@@ -91,37 +130,30 @@ func runSshx(server, shell string, quiet bool, name string, enableReaders bool, 
 		EnableReaders: enableReaders,
 	}
 
-	var controller interface {
-		Name() string
-		URL() string
-		WriteURL() *string
-		Run() error
-		Close() error
+	// Create connection configuration
+	connConfig := transport.DefaultConnectionConfig()
+	if verbose {
+		connConfig = transport.VerboseConfig()
+	}
+	
+	// Create controller using transport abstraction with automatic fallback
+	controller, err := client.NewControllerWithConnection(config, connConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create controller with transport: %w", err)
 	}
 
-	// Create controller - use new transport abstraction if requested
-	if useTransport {
-		connConfig := transport.DefaultConnectionConfig()
-		if verbose {
-			connConfig = transport.VerboseConfig()
+	// Report connection method if verbose
+	if verbose {
+		switch controller.ConnectionMethod() {
+		case transport.MethodGrpc:
+			log.Printf("✓ Connected via gRPC")
+		case transport.MethodWebSocketFallback:
+			log.Printf("✓ Connected via WebSocket fallback")
 		}
-		v2Controller, err := client.NewControllerV2WithConnection(config, connConfig)
-		if err != nil {
-			return fmt.Errorf("failed to create controller with transport: %w", err)
-		}
-		controller = v2Controller
-		if verbose {
-			log.Printf("Using %s transport", v2Controller.ConnectionMethod())
-		}
-	} else {
-		v1Controller, err := client.NewController(config)
-		if err != nil {
-			return fmt.Errorf("failed to create controller: %w", err)
-		}
-		controller = v1Controller
 	}
 
 	// Register with dashboard if requested
+	var dashboardInfo *DashboardInfo
 	if dashboard || dashboardKey != "" {
 		var key *string
 		if dashboardKey != "" {
@@ -129,8 +161,10 @@ func runSshx(server, shell string, quiet bool, name string, enableReaders bool, 
 			key = &dashboardKey
 		}
 		// else key is nil, which creates a new dashboard
-		if err := registerWithDashboard(server, controller, sessionName, key); err != nil {
+		if info, err := registerWithDashboard(server, controller, sessionName, key); err != nil {
 			log.Printf("Dashboard registration failed: %v", err)
+		} else {
+			dashboardInfo = info
 		}
 	}
 
@@ -142,7 +176,7 @@ func runSshx(server, shell string, quiet bool, name string, enableReaders bool, 
 			fmt.Println(controller.URL())
 		}
 	} else {
-		printGreeting(shellCmd, controller)
+		printGreeting(shellCmd, controller, controller.ConnectionMethod(), dashboardInfo)
 	}
 
 	// Set up signal handling
@@ -233,6 +267,12 @@ type RegisterDashboardResponse struct {
 	DashboardURL string `json:"dashboardUrl"`
 }
 
+// DashboardInfo for display
+type DashboardInfo struct {
+	Key string
+	URL string
+}
+
 // makeRelativeURL extracts relative URL from full URL for reverse proxy compatibility
 func makeRelativeURL(fullURL string) string {
 	if u, err := url.Parse(fullURL); err == nil {
@@ -253,7 +293,7 @@ func registerWithDashboard(server string, controller interface {
 	Name() string
 	URL() string
 	WriteURL() *string
-}, displayName string, dashboardKey *string) error {
+}, displayName string, dashboardKey *string) (*DashboardInfo, error) {
 	dashboardURL := server + "/api/dashboards/register"
 	
 	// Prepare request payload - matches Rust RegisterDashboardRequest exactly
@@ -272,52 +312,103 @@ func registerWithDashboard(server string, controller interface {
 	// Convert to JSON
 	jsonData, err := json.Marshal(request)
 	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 	
 	// Make HTTP POST request
 	resp, err := http.Post(dashboardURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return fmt.Errorf("failed to post to dashboard: %w", err)
+		return nil, fmt.Errorf("failed to post to dashboard: %w", err)
 	}
 	defer resp.Body.Close()
 	
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		var response RegisterDashboardResponse
 		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-			return fmt.Errorf("failed to decode response: %w", err)
+			return nil, fmt.Errorf("failed to decode response: %w", err)
 		}
-		log.Println("✓ Session registered to dashboard")
-		log.Printf("➜ Dashboard URL: %s", response.DashboardURL)
+		fmt.Println("\n  ✓ Session registered to dashboard")
+		
+		return &DashboardInfo{
+			Key: response.DashboardKey,
+			URL: response.DashboardURL,
+		}, nil
 	} else {
 		log.Printf("Failed to register with dashboard: %s", resp.Status)
+		return nil, fmt.Errorf("Dashboard registration failed with status: %s", resp.Status)
 	}
-	
-	return nil
 }
 
 func printGreeting(shell string, controller interface {
 	URL() string
 	WriteURL() *string
-}) {
+}, connectionMethod transport.ConnectionMethod, dashboardInfo *DashboardInfo) {
 	version := "v1.0.0" // You could make this dynamic
-
+	transportStr := connectionMethod.String()
+	
 	if writeURL := controller.WriteURL(); writeURL != nil {
-		fmt.Printf(`
-  sshx %s
+		if dashboardInfo != nil {
+			fmt.Printf(`
+  %s%ssshx%s %s%s%s
 
-  ➜  Read-only link: %s
-  ➜  Writable link:  %s
-  ➜  Shell:          %s
+  %s➜%s  Read-only link: %s%s%s
+  %s➜%s  Writable link:  %s%s%s
+  %s➜%s  Dashboard:      %s%s%s
+  %s➜%s  Dashboard ID:   %s%s%s
+  %s➜%s  Shell:          %s%s%s
+  %s➜%s  Transport:      %s%s%s
 
-`, version, controller.URL(), *writeURL, shell)
+`, BoldGreen, Green, Reset, Green, version, Reset,
+				Green, Reset, UnderlineCyan, controller.URL(), Reset,
+				Green, Reset, UnderlineCyan, *writeURL, Reset,
+				Green, Reset, UnderlineCyan, dashboardInfo.URL, Reset,
+				Green, Reset, Fixed8, dashboardInfo.Key, Reset,
+				Green, Reset, Fixed8, shell, Reset,
+				Green, Reset, Fixed8, transportStr, Reset)
+		} else {
+			fmt.Printf(`
+  %s%ssshx%s %s%s%s
+
+  %s➜%s  Read-only link: %s%s%s
+  %s➜%s  Writable link:  %s%s%s
+  %s➜%s  Shell:          %s%s%s
+  %s➜%s  Transport:      %s%s%s
+
+`, BoldGreen, Green, Reset, Green, version, Reset,
+				Green, Reset, UnderlineCyan, controller.URL(), Reset,
+				Green, Reset, UnderlineCyan, *writeURL, Reset,
+				Green, Reset, Fixed8, shell, Reset,
+				Green, Reset, Fixed8, transportStr, Reset)
+		}
 	} else {
-		fmt.Printf(`
-  sshx %s
+		if dashboardInfo != nil {
+			fmt.Printf(`
+  %s%ssshx%s %s%s%s
 
-  ➜  Link:  %s
-  ➜  Shell: %s
+  %s➜%s  Link:         %s%s%s
+  %s➜%s  Dashboard:    %s%s%s
+  %s➜%s  Dashboard ID: %s%s%s
+  %s➜%s  Shell:        %s%s%s
+  %s➜%s  Transport:    %s%s%s
 
-`, version, controller.URL(), shell)
+`, BoldGreen, Green, Reset, Green, version, Reset,
+				Green, Reset, UnderlineCyan, controller.URL(), Reset,
+				Green, Reset, UnderlineCyan, dashboardInfo.URL, Reset,
+				Green, Reset, Fixed8, dashboardInfo.Key, Reset,
+				Green, Reset, Fixed8, shell, Reset,
+				Green, Reset, Fixed8, transportStr, Reset)
+		} else {
+			fmt.Printf(`
+  %s%ssshx%s %s%s%s
+
+  %s➜%s  Link:      %s%s%s
+  %s➜%s  Shell:     %s%s%s
+  %s➜%s  Transport: %s%s%s
+
+`, BoldGreen, Green, Reset, Green, version, Reset,
+				Green, Reset, UnderlineCyan, controller.URL(), Reset,
+				Green, Reset, Fixed8, shell, Reset,
+				Green, Reset, Fixed8, transportStr, Reset)
+		}
 	}
 }

@@ -1,23 +1,18 @@
+// Package client provides the core client functionality with transport abstraction.
 package client
 
 import (
 	"context"
 	"crypto/rand"
-	"crypto/tls"
 	"fmt"
-	"io"
 	"log"
 	"math/big"
-	"strings"
 	"sync"
 	"time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-
 	"sshx-go/pkg/encrypt"
 	"sshx-go/pkg/proto"
+	"sshx-go/pkg/transport"
 )
 
 const (
@@ -25,11 +20,18 @@ const (
 	reconnectInterval = 60 * time.Second
 )
 
-// Controller handles a single session's communication with the remote server.
-// This matches the Rust Controller struct exactly.
+// ControllerConfig holds configuration for creating a controller.
+type ControllerConfig struct {
+	Origin        string
+	Name          string
+	Runner        Runner
+	EnableReaders bool
+}
+
+// Controller handles a single session's communication with the remote server using transport abstraction.
 type Controller struct {
-	origin        string
-	runner        Runner
+	transport     transport.SshxTransport
+	config        ControllerConfig
 	encrypt       *encrypt.Encrypt
 	encryptionKey string
 
@@ -49,19 +51,19 @@ type Controller struct {
 	// Context for cancellation
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// Connection method used
+	connectionMethod transport.ConnectionMethod
 }
 
-// ControllerConfig holds configuration for creating a controller.
-type ControllerConfig struct {
-	Origin        string
-	Name          string
-	Runner        Runner
-	EnableReaders bool
-}
-
-// NewController constructs a new controller, connecting to the remote server.
-// This matches the Rust Controller::new method exactly.
+// NewController constructs a new controller using transport abstraction, connecting to the remote server.
+// This version automatically tries gRPC first, then falls back to WebSocket if gRPC fails.
 func NewController(config ControllerConfig) (*Controller, error) {
+	return NewControllerWithConnection(config, transport.DefaultConnectionConfig())
+}
+
+// NewControllerWithConnection constructs a new controller with custom connection configuration.
+func NewControllerWithConnection(config ControllerConfig, connConfig transport.ConnectionConfig) (*Controller, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Generate encryption key - matches Rust implementation
@@ -79,24 +81,27 @@ func NewController(config ControllerConfig) (*Controller, error) {
 		writePasswordHash = writeEncrypt.Zeros()
 	}
 
-	// Connect to server
-	client, err := connectGRPC(config.Origin)
+	// Connect to server with fallback
+	connectionResult, err := transport.ConnectWithFallback(config.Origin, config.Name, connConfig)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to connect to server: %w", err)
 	}
 
+	log.Printf("Connected to %s using %s transport", config.Origin, connectionResult.Method)
+
 	// Open session - matches Rust OpenRequest exactly
 	openReq := &proto.OpenRequest{
-		Origin:             config.Origin,
-		EncryptedZeros:     encryptor.Zeros(),
-		Name:               config.Name,
-		WritePasswordHash:  writePasswordHash,
+		Origin:            config.Origin,
+		EncryptedZeros:    encryptor.Zeros(),
+		Name:              config.Name,
+		WritePasswordHash: writePasswordHash,
 	}
 
-	resp, err := client.Open(ctx, openReq)
+	resp, err := connectionResult.Transport.Open(ctx, openReq)
 	if err != nil {
 		cancel()
+		connectionResult.Transport.Cleanup()
 		return nil, fmt.Errorf("failed to open session: %w", err)
 	}
 
@@ -113,19 +118,20 @@ func NewController(config ControllerConfig) (*Controller, error) {
 	outputRx := make(chan ClientMessage, 64)
 
 	controller := &Controller{
-		origin:        config.Origin,
-		runner:        config.Runner,
-		encrypt:       encryptor,
-		encryptionKey: encryptionKey,
-		name:          resp.Name,
-		token:         resp.Token,
-		url:           url,
-		writeURL:      writeURL,
-		shellsTx:      make(map[uint32]chan ShellData),
-		outputTx:      outputTx,
-		outputRx:      outputRx,
-		ctx:           ctx,
-		cancel:        cancel,
+		transport:        connectionResult.Transport,
+		config:           config,
+		encrypt:          encryptor,
+		encryptionKey:    encryptionKey,
+		name:             resp.Name,
+		token:            resp.Token,
+		url:              url,
+		writeURL:         writeURL,
+		shellsTx:         make(map[uint32]chan ShellData),
+		outputTx:         outputTx,
+		outputRx:         outputRx,
+		ctx:              ctx,
+		cancel:           cancel,
+		connectionMethod: connectionResult.Method,
 	}
 
 	return controller, nil
@@ -151,6 +157,11 @@ func (c *Controller) EncryptionKey() string {
 	return c.encryptionKey
 }
 
+// ConnectionMethod returns the connection method used.
+func (c *Controller) ConnectionMethod() transport.ConnectionMethod {
+	return c.connectionMethod
+}
+
 // Run runs the controller forever, listening for requests from the server.
 // This matches the Rust Controller::run method exactly.
 func (c *Controller) Run() error {
@@ -170,7 +181,7 @@ func (c *Controller) Run() error {
 			}
 			secs := 1 << min(retries, 4) // Exponential backoff, max 16 seconds
 			log.Printf("disconnected, retrying in %ds: %v", secs, err)
-			
+
 			select {
 			case <-time.After(time.Duration(secs) * time.Second):
 			case <-c.ctx.Done():
@@ -185,130 +196,83 @@ func (c *Controller) Run() error {
 // tryChannel helper function used by Run() that can return errors.
 // This matches the Rust Controller::try_channel method exactly.
 func (c *Controller) tryChannel() error {
-	// Create channel to send client updates - matches Rust mpsc::channel(16)
-	sendCh := make(chan *proto.ClientUpdate, 16)
-	
+	// For WebSocket connections, we need to recreate the transport on each attempt
+	// since WebSocket connections can't be reused after failure
+	if c.connectionMethod == transport.MethodWebSocketFallback {
+		// Cleanup old transport
+		c.transport.Cleanup()
+
+		// Create new WebSocket connection
+		connectionResult, err := transport.ConnectWithFallback(c.config.Origin, c.config.Name, transport.DefaultConnectionConfig())
+		if err != nil {
+			return fmt.Errorf("failed to reconnect: %w", err)
+		}
+		c.transport = connectionResult.Transport
+		c.connectionMethod = connectionResult.Method
+	}
+
+	// Get bidirectional channels from transport
+	serverUpdates, clientUpdates, err := c.transport.Channel(c.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create channel: %w", err)
+	}
+
 	// Send hello message first - matches Rust implementation
 	hello := fmt.Sprintf("%s,%s", c.name, c.token)
 	helloMsg := &proto.ClientUpdate{
 		ClientMessage: &proto.ClientUpdate_Hello{Hello: hello},
 	}
-	
+
 	select {
-	case sendCh <- helloMsg:
+	case clientUpdates <- helloMsg:
 	case <-c.ctx.Done():
 		return c.ctx.Err()
 	}
 
-	// Connect to server
-	target := parseGRPCTarget(c.origin)
-	
-	// Use TLS for HTTPS origins, insecure for others
-	var opts []grpc.DialOption
-	if strings.HasPrefix(c.origin, "https://") {
-		// Use system's root CA set for TLS
-		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
-	} else {
-		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	}
-	
-	conn, err := grpc.Dial(target, opts...)
-	if err != nil {
-		return fmt.Errorf("failed to connect: %w", err)
-	}
-	defer conn.Close()
-
-	client := proto.NewSshxServiceClient(conn)
-	stream, err := client.Channel(c.ctx)
-	if err != nil {
-		return fmt.Errorf("failed to create channel: %w", err)
-	}
-
-	// Start sending goroutine that drains sendCh
-	go func() {
-		for msg := range sendCh {
-			if err := stream.Send(msg); err != nil {
-				log.Printf("failed to send message: %v", err)
-				return
-			}
-		}
-	}()
-	defer close(sendCh)
-
 	// Main loop - matches Rust tokio::select! exactly
 	heartbeat := time.NewTicker(heartbeatInterval)
 	defer heartbeat.Stop()
-	
+
 	reconnectTimer := time.NewTimer(reconnectInterval)
 	defer reconnectTimer.Stop()
-
-	// Start receiving goroutine to put messages in a channel
-	recvCh := make(chan *proto.ServerUpdate, 16)
-	recvErr := make(chan error, 1)
-	go func() {
-		defer close(recvCh)
-		defer close(recvErr)
-		for {
-			resp, err := stream.Recv()
-			if err != nil {
-				recvErr <- err
-				return
-			}
-			select {
-			case recvCh <- resp:
-			case <-c.ctx.Done():
-				return
-			}
-		}
-	}()
 
 	for {
 		select {
 		case <-heartbeat.C:
 			// Send heartbeat - matches Rust interval.tick()
-			// Block until send succeeds, matching Rust tx.send().await?
 			select {
-			case sendCh <- &proto.ClientUpdate{}:
+			case clientUpdates <- &proto.ClientUpdate{}:
 			case <-c.ctx.Done():
 				return c.ctx.Err()
 			}
-			
+
 		case msg := <-c.outputRx:
 			// Send client message - matches Rust output_rx.recv()
-			// Block until send succeeds, matching Rust send_msg().await?
 			update := c.clientMessageToUpdate(msg)
 			select {
-			case sendCh <- update:
+			case clientUpdates <- update:
 			case <-c.ctx.Done():
 				return c.ctx.Err()
 			}
-			
-		case resp, ok := <-recvCh:
+
+		case resp, ok := <-serverUpdates:
 			// Receive server message - matches Rust messages.next()
 			if !ok {
-				return fmt.Errorf("receive channel closed")
+				return fmt.Errorf("server updates channel closed")
 			}
 			if err := c.handleServerMessage(resp); err != nil {
 				log.Printf("error handling server message: %v", err)
 			}
-			
-		case err := <-recvErr:
-			// Receive goroutine failed
-			if err == io.EOF {
-				return fmt.Errorf("server closed connection")
-			}
-			return fmt.Errorf("receive error: %w", err)
-			
+
 		case <-reconnectTimer.C:
 			// Force reconnection - matches Rust reconnect timer
 			return nil
-			
+
 		case <-c.ctx.Done():
 			return c.ctx.Err()
 		}
 	}
 }
-
 
 // handleServerMessage processes a message received from the server.
 // This matches the Rust message handling logic exactly.
@@ -316,11 +280,20 @@ func (c *Controller) handleServerMessage(msg *proto.ServerUpdate) error {
 	switch serverMsg := msg.ServerMessage.(type) {
 	case *proto.ServerUpdate_Input:
 		// Decrypt input data - matches Rust implementation exactly
+		log.Printf("CONTROLLER[%s]: Received Input - id=%d, offset=%d, encrypted_len=%d, encrypted_data=%v", 
+			c.transport.ConnectionType(), serverMsg.Input.Id, serverMsg.Input.Offset, 
+			len(serverMsg.Input.Data), serverMsg.Input.Data)
+		
 		data := c.encrypt.Segment(0x200000000, serverMsg.Input.Offset, serverMsg.Input.Data)
+		
+		log.Printf("CONTROLLER[%s]: Decrypted Input - id=%d, decrypted_len=%d, decrypted_data=%q, raw=%v", 
+			c.transport.ConnectionType(), serverMsg.Input.Id, len(data), string(data), data)
+		
 		c.shellsMu.RLock()
 		if sender, ok := c.shellsTx[serverMsg.Input.Id]; ok {
 			select {
 			case sender <- ShellData{Type: ShellDataTypeData, Data: data}:
+				log.Printf("CONTROLLER[%s]: Sent data to shell %d", c.transport.ConnectionType(), serverMsg.Input.Id)
 			default:
 				log.Printf("shell %d channel full, dropping input", serverMsg.Input.Id)
 			}
@@ -332,8 +305,7 @@ func (c *Controller) handleServerMessage(msg *proto.ServerUpdate) error {
 	case *proto.ServerUpdate_CreateShell:
 		id := serverMsg.CreateShell.Id
 		center := [2]int32{serverMsg.CreateShell.X, serverMsg.CreateShell.Y}
-		
-		
+
 		c.shellsMu.Lock()
 		if _, exists := c.shellsTx[id]; !exists {
 			c.spawnShellTask(id, center)
@@ -350,7 +322,7 @@ func (c *Controller) handleServerMessage(msg *proto.ServerUpdate) error {
 			delete(c.shellsTx, id)
 		}
 		c.shellsMu.Unlock()
-		
+
 		// Send acknowledgment - matches Rust send_msg().await?
 		select {
 		case c.outputRx <- ClientMessage{
@@ -429,7 +401,7 @@ func (c *Controller) spawnShellTask(id uint32, center [2]int32) {
 			c.shellsMu.Lock()
 			delete(c.shellsTx, id)
 			c.shellsMu.Unlock()
-			
+
 			// Block until send succeeds, matching Rust output_tx.send().await.ok()
 			select {
 			case c.outputRx <- ClientMessage{
@@ -440,7 +412,7 @@ func (c *Controller) spawnShellTask(id uint32, center [2]int32) {
 			}
 		}()
 
-		log.Printf("spawning new shell %d", id)
+		log.Printf("spawning new shell %d using %s transport", id, c.transport.ConnectionType())
 
 		// Send shell creation acknowledgment - matches Rust NewShell exactly
 		newShell := &proto.NewShell{
@@ -459,7 +431,7 @@ func (c *Controller) spawnShellTask(id uint32, center [2]int32) {
 		}
 
 		// Run the shell
-		if err := c.runner.Run(c.ctx, id, c.encrypt, shellTx, c.outputRx); err != nil {
+		if err := c.config.Runner.Run(c.ctx, id, c.encrypt, shellTx, c.outputRx); err != nil {
 			if c.ctx.Err() == nil { // Only send error if not due to context cancellation
 				errMsg := ClientMessage{
 					Type:  ClientMessageTypeError,
@@ -483,6 +455,10 @@ func (c *Controller) clientMessageToUpdate(msg ClientMessage) *proto.ClientUpdat
 			ClientMessage: &proto.ClientUpdate_Hello{Hello: msg.Hello},
 		}
 	case ClientMessageTypeData:
+		log.Printf("CONTROLLER[%s]: Sending outbound Data - id=%d, len=%d, data=%q, raw=%v, seq=%d", 
+			c.transport.ConnectionType(), msg.Data.ID, len(msg.Data.Data), 
+			string(msg.Data.Data), msg.Data.Data, msg.Data.Seq)
+		
 		return &proto.ClientUpdate{
 			ClientMessage: &proto.ClientUpdate_Data{
 				Data: &proto.TerminalData{
@@ -519,25 +495,8 @@ func (c *Controller) clientMessageToUpdate(msg ClientMessage) *proto.ClientUpdat
 // This matches the Rust Controller::close method exactly.
 func (c *Controller) Close() error {
 	defer c.cancel()
+	defer c.transport.Cleanup()
 
-	target := parseGRPCTarget(c.origin)
-	
-	// Use TLS for HTTPS origins, insecure for others
-	var opts []grpc.DialOption
-	if strings.HasPrefix(c.origin, "https://") {
-		// Use system's root CA set for TLS
-		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
-	} else {
-		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	}
-	
-	conn, err := grpc.Dial(target, opts...)
-	if err != nil {
-		return fmt.Errorf("failed to connect for close: %w", err)
-	}
-	defer conn.Close()
-
-	client := proto.NewSshxServiceClient(conn)
 	req := &proto.CloseRequest{
 		Name:  c.name,
 		Token: c.token,
@@ -546,7 +505,7 @@ func (c *Controller) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err = client.Close(ctx, req)
+	err := c.transport.Close(ctx, req)
 	if err != nil {
 		return fmt.Errorf("failed to close session: %w", err)
 	}
@@ -554,60 +513,12 @@ func (c *Controller) Close() error {
 	return nil
 }
 
-// connectGRPC creates a new gRPC client connection.
-func connectGRPC(origin string) (proto.SshxServiceClient, error) {
-	// Parse the origin URL to extract host:port for gRPC
-	target := parseGRPCTarget(origin)
-	
-	// Use TLS for HTTPS origins, insecure for others
-	var opts []grpc.DialOption
-	if strings.HasPrefix(origin, "https://") {
-		// Use system's root CA set for TLS
-		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
-	} else {
-		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	}
-	
-	conn, err := grpc.Dial(target, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return proto.NewSshxServiceClient(conn), nil
-}
-
-// parseGRPCTarget extracts the host:port from a URL for gRPC dialing
-func parseGRPCTarget(origin string) string {
-	// Remove protocol prefix if present
-	if strings.HasPrefix(origin, "http://") {
-		origin = origin[7:]
-	} else if strings.HasPrefix(origin, "https://") {
-		origin = origin[8:]
-	}
-	
-	// Remove any path component
-	if idx := strings.Index(origin, "/"); idx != -1 {
-		origin = origin[:idx]
-	}
-	
-	// If no port is specified, add default port
-	if !strings.Contains(origin, ":") {
-		// Default to port 8051 for local development, 443 for HTTPS, 80 for HTTP
-		if strings.Contains(origin, "localhost") || strings.Contains(origin, "127.0.0.1") {
-			origin += ":8051"
-		} else {
-			origin += ":443" // Assume HTTPS for external servers
-		}
-	}
-	
-	return origin
-}
-
 // randAlphanumeric generates a cryptographically-secure, random alphanumeric value.
 // This matches the Rust rand_alphanumeric function exactly.
 func randAlphanumeric(length int) string {
 	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 	result := make([]byte, length)
-	
+
 	for i := range result {
 		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
 		if err != nil {
@@ -615,7 +526,7 @@ func randAlphanumeric(length int) string {
 		}
 		result[i] = charset[num.Int64()]
 	}
-	
+
 	return string(result)
 }
 
