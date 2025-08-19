@@ -203,13 +203,14 @@ func (c *Controller) tryChannel() error {
 		// Cleanup old transport
 		c.transport.Cleanup()
 
-		// Create new WebSocket connection
-		connectionResult, err := transport.ConnectWithFallback(c.config.Origin, c.config.Name, transport.DefaultConnectionConfig())
+		// Reconnect using the specific transport type that worked initially
+		wsURL := transport.GrpcToWebSocketURL(c.config.Origin, c.config.Name)
+		util.DebugLog("Reconnecting via WebSocket (remembered preference): %s", wsURL)
+		newTransport, err := transport.ConnectWebSocket(wsURL)
 		if err != nil {
-			return fmt.Errorf("failed to reconnect: %w", err)
+			return fmt.Errorf("failed to reconnect via WebSocket: %w", err)
 		}
-		c.transport = connectionResult.Transport
-		c.connectionMethod = connectionResult.Method
+		c.transport = newTransport
 	}
 
 	// Get bidirectional channels from transport

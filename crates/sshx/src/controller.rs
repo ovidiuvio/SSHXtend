@@ -17,7 +17,8 @@ use tracing::{debug, error, warn};
 
 use crate::encrypt::Encrypt;
 use crate::runner::{Runner, ShellData};
-use crate::transport::{SshxTransport, GrpcTransport};
+use crate::transport::{SshxTransport, GrpcTransport, WebSocketTransport, grpc_to_websocket_url};
+use crate::connection::ConnectionMethod;
 
 /// Interval for sending empty heartbeat messages to the server.
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(2);
@@ -39,6 +40,8 @@ pub struct Controller {
 
     /// Transport layer (gRPC or WebSocket)
     transport: Box<dyn SshxTransport>,
+    /// Last successful connection method for this session
+    last_connection_method: Option<ConnectionMethod>,
 
     /// Channels with backpressure routing messages to each shell task.
     shells_tx: HashMap<Sid, mpsc::Sender<ShellData>>,
@@ -121,6 +124,13 @@ impl Controller {
         };
 
         let (output_tx, output_rx) = mpsc::channel(64);
+        // Remember the successful connection method for reconnections
+        let connection_method = match transport.connection_type() {
+            "gRPC" => Some(ConnectionMethod::Grpc),
+            "WebSocket" => Some(ConnectionMethod::WebSocketFallback),
+            _ => None,
+        };
+
         Ok(Self {
             origin: origin.into(),
             runner,
@@ -131,6 +141,7 @@ impl Controller {
             url: resp.url,
             write_url,
             transport,
+            last_connection_method: connection_method,
             shells_tx: HashMap::new(),
             output_tx,
             output_rx,
@@ -142,13 +153,24 @@ impl Controller {
     /// This is used on reconnection to the server, since some replicas may be
     /// gracefully shutting down, which means connected clients need to start a
     /// new connection.
-    async fn connect_transport(origin: &str, session_name: &str) -> Result<Box<dyn SshxTransport>, anyhow::Error> {
-        // For reconnection, use the same fallback logic as initial connection
-        use crate::connection::{connect_with_fallback, ConnectionConfig};
-        
-        let config = ConnectionConfig::default(); // Silent mode for reconnection
-        let result = connect_with_fallback(origin, session_name, config).await?;
-        Ok(result.transport)
+    async fn connect_transport(&self, origin: &str, session_name: &str) -> Result<Box<dyn SshxTransport>, anyhow::Error> {
+        // For reconnection, use the specific connection method that worked initially
+        match &self.last_connection_method {
+            Some(ConnectionMethod::Grpc) => {
+                debug!(%origin, "reconnecting via gRPC (remembered preference)");
+                Ok(Box::new(GrpcTransport::connect(origin).await?))
+            }
+            Some(ConnectionMethod::WebSocketFallback) => {
+                let ws_url = grpc_to_websocket_url(origin, session_name);
+                debug!(%ws_url, "reconnecting via WebSocket (remembered preference)");
+                Ok(Box::new(WebSocketTransport::connect(&ws_url).await?))
+            }
+            None => {
+                // Fallback to gRPC if no preference (shouldn't happen after initial connection)
+                debug!(%origin, "no remembered preference, defaulting to gRPC");
+                Ok(Box::new(GrpcTransport::connect(origin).await?))
+            }
+        }
     }
 
     /// Returns the name of the session.
@@ -197,7 +219,7 @@ impl Controller {
         send_msg(&tx, hello).await?;
 
         // Create a new transport connection for reconnection
-        let mut transport = Self::connect_transport(&self.origin, &self.name).await?;
+        let mut transport = self.connect_transport(&self.origin, &self.name).await?;
         let resp = transport.channel(ReceiverStream::new(rx)).await?;
         let mut messages = resp; // A stream of server messages.
 
