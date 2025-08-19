@@ -13,6 +13,7 @@ import (
 	"sshx-go/pkg/encrypt"
 	"sshx-go/pkg/proto"
 	"sshx-go/pkg/transport"
+	"sshx-go/pkg/util"
 )
 
 const (
@@ -280,20 +281,20 @@ func (c *Controller) handleServerMessage(msg *proto.ServerUpdate) error {
 	switch serverMsg := msg.ServerMessage.(type) {
 	case *proto.ServerUpdate_Input:
 		// Decrypt input data - matches Rust implementation exactly
-		log.Printf("CONTROLLER[%s]: Received Input - id=%d, offset=%d, encrypted_len=%d, encrypted_data=%v", 
+		util.DebugLog("CONTROLLER[%s]: Received Input - id=%d, offset=%d, encrypted_len=%d, encrypted_data=%v", 
 			c.transport.ConnectionType(), serverMsg.Input.Id, serverMsg.Input.Offset, 
 			len(serverMsg.Input.Data), serverMsg.Input.Data)
 		
 		data := c.encrypt.Segment(0x200000000, serverMsg.Input.Offset, serverMsg.Input.Data)
 		
-		log.Printf("CONTROLLER[%s]: Decrypted Input - id=%d, decrypted_len=%d, decrypted_data=%q, raw=%v", 
+		util.DebugLog("CONTROLLER[%s]: Decrypted Input - id=%d, decrypted_len=%d, decrypted_data=%q, raw=%v", 
 			c.transport.ConnectionType(), serverMsg.Input.Id, len(data), string(data), data)
 		
 		c.shellsMu.RLock()
 		if sender, ok := c.shellsTx[serverMsg.Input.Id]; ok {
 			select {
 			case sender <- ShellData{Type: ShellDataTypeData, Data: data}:
-				log.Printf("CONTROLLER[%s]: Sent data to shell %d", c.transport.ConnectionType(), serverMsg.Input.Id)
+				util.DebugLog("CONTROLLER[%s]: Sent data to shell %d", c.transport.ConnectionType(), serverMsg.Input.Id)
 			default:
 				log.Printf("shell %d channel full, dropping input", serverMsg.Input.Id)
 			}
@@ -455,7 +456,7 @@ func (c *Controller) clientMessageToUpdate(msg ClientMessage) *proto.ClientUpdat
 			ClientMessage: &proto.ClientUpdate_Hello{Hello: msg.Hello},
 		}
 	case ClientMessageTypeData:
-		log.Printf("CONTROLLER[%s]: Sending outbound Data - id=%d, len=%d, data=%q, raw=%v, seq=%d", 
+		util.DebugLog("CONTROLLER[%s]: Sending outbound Data - id=%d, len=%d, data=%q, raw=%v, seq=%d", 
 			c.transport.ConnectionType(), msg.Data.ID, len(msg.Data.Data), 
 			string(msg.Data.Data), msg.Data.Data, msg.Data.Seq)
 		

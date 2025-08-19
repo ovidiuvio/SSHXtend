@@ -18,6 +18,7 @@ import (
 	"sshx-go/pkg/service"
 	"sshx-go/pkg/terminal"
 	"sshx-go/pkg/transport"
+	"sshx-go/pkg/util"
 )
 
 // ANSI color codes to match Rust ansi_term crate
@@ -102,6 +103,9 @@ Usage:
 }
 
 func runSshx(server, shell string, quiet bool, name string, enableReaders bool, serviceCmd string, dashboard bool, dashboardKey string, verbose bool) error {
+	// Initialize logger with verbose mode
+	util.InitLogger(verbose)
+	
 	// Handle service commands if present
 	if serviceCmd != "" {
 		return handleServiceCommand(serviceCmd, server, dashboard || dashboardKey != "", enableReaders, name, shell)
