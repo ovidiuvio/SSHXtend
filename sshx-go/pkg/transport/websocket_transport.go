@@ -105,32 +105,6 @@ type TerminalInputResponse struct {
 	Offset uint64  `json:"offset"` // Proper uint64 to preserve large integer precision
 }
 
-// Custom unmarshaler to handle scientific notation while preserving precision
-func (t *TerminalInputResponse) UnmarshalJSON(data []byte) error {
-	// Use a temporary struct with json.Number for offset to preserve precision
-	type TempStruct struct {
-		ID     uint32      `json:"id"`
-		Data   []uint8     `json:"data"`
-		Offset json.Number `json:"offset"`
-	}
-	
-	var temp TempStruct
-	if err := json.Unmarshal(data, &temp); err != nil {
-		return err
-	}
-	
-	t.ID = temp.ID
-	t.Data = temp.Data
-	
-	// Parse offset with full precision using json.Number
-	offsetInt64, err := temp.Offset.Int64()
-	if err != nil {
-		return fmt.Errorf("failed to parse offset as int64: %w", err)
-	}
-	t.Offset = uint64(offsetInt64)
-	
-	return nil
-}
 
 type CreateShellResponse struct {
 	ID uint32 `json:"id"`
@@ -685,11 +659,13 @@ func (w *WebSocketTransport) handleIncomingMessage(message []byte) error {
 	// Try to parse as a correlated response first
 	var cliResponse CliResponse
 	if err := json.Unmarshal(message, &cliResponse); err == nil && cliResponse.ID != "" {
+		util.DebugLog("Successfully parsed CliResponse with ID: %s", cliResponse.ID)
 		// Handle streaming messages (sent with "server_update" ID) - matches Rust implementation
 		if cliResponse.ID == "server_update" {
 			util.DebugLog("WebSocket received server_update message: %+v", cliResponse.Message)
 			serverUpdate, err := CliResponseToServerUpdate(cliResponse.Message)
 			if err != nil {
+				log.Printf("Failed to convert server_update to ServerUpdate: %v, message: %+v", err, cliResponse.Message)
 				return fmt.Errorf("failed to convert CLI response to server update: %w", err)
 			}
 			util.DebugLog("WebSocket converted to ServerUpdate: %T", serverUpdate.ServerMessage)
@@ -883,7 +859,7 @@ func CliResponseToServerUpdate(cliMsg CliResponseMessage) (*proto.ServerUpdate, 
 		}, nil
 	}
 	
-	return nil, fmt.Errorf("unknown message type in CliResponseMessage")
+	return nil, fmt.Errorf("unknown message type in CliResponseMessage - all fields are nil: %+v", cliMsg)
 }
 
 // pingLoop sends periodic ping frames to keep the WebSocket connection alive.
