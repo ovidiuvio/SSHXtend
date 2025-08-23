@@ -20,15 +20,17 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use futures_util::{SinkExt, StreamExt, stream::SplitSink, stream::SplitStream};
 use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::MaybeTlsStream;
-use serde_json;
 use url::Url;
 
-use sshx_core::proto::{ClientUpdate, ServerUpdate, client_update::ClientMessage, server_update::ServerMessage, TerminalInput, NewShell, SequenceNumbers};
-use bytes::Bytes;
+use sshx_core::proto::{
+    ClientUpdate, ServerUpdate, client_update::ClientMessage, server_update::ServerMessage, 
+    CliRequest, CliResponse, cli_request, cli_response, ChannelStartRequest
+};
 use pin_project::pin_project;
 use std::pin::Pin;
 use std::task::{Context as TaskContext, Poll};
 use futures_util::Stream;
+use prost::Message as ProstMessage;
 
 /// Wrapper for WebSocket streams to match the tonic Streaming interface
 #[pin_project]
@@ -53,155 +55,10 @@ impl<T> Stream for WebSocketStreaming<T> {
 }
 
 
-/// CLI WebSocket request message with correlation ID.
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-struct CliRequest {
-    /// Unique request ID for correlation.
-    id: String,
-    /// The actual request message.
-    message: CliMessage,
-}
+// Using protobuf CliRequest directly from sshx_core::proto
 
-/// CLI WebSocket response message with correlation ID.
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-struct CliResponse {
-    /// Request ID this response corresponds to.
-    id: String,
-    /// The actual response message.
-    message: CliResponseMessage,
-}
+// Using protobuf CliResponse directly from sshx_core::proto
 
-/// CLI-specific request message types.
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-enum CliMessage {
-    /// Request to open a new session.
-    OpenSession {
-        /// The origin hostname for the session.
-        origin: String,
-        /// Encrypted zeros block for authentication.
-        encrypted_zeros: Bytes,
-        /// Display name for the session.
-        name: String,
-        /// Optional write password hash for session protection.
-        write_password_hash: Option<Bytes>,
-    },
-    /// Request to close an existing session.
-    CloseSession {
-        /// The session name to close.
-        name: String,
-        /// Authentication token for the session.
-        token: String,
-    },
-    /// Start bidirectional streaming for a session.
-    StartChannel {
-        /// The session name to start streaming for.
-        name: String,
-        /// Authentication token for the session.
-        token: String,
-    },
-    /// Terminal data from CLI client.
-    TerminalData {
-        /// Shell ID this data belongs to.
-        id: u32,
-        /// Raw terminal data bytes.
-        data: Bytes,
-        /// Sequence number for ordering.
-        seq: u64,
-    },
-    /// Acknowledge new shell creation.
-    CreatedShell {
-        /// The newly created shell ID.
-        id: u32,
-        /// Initial x-coordinate of the shell window.
-        x: i32,
-        /// Initial y-coordinate of the shell window.
-        y: i32,
-    },
-    /// Acknowledge shell closure.
-    ClosedShell {
-        /// The shell ID that was closed.
-        id: u32,
-    },
-    /// Pong response for latency measurement.
-    Pong {
-        /// Unix timestamp for latency calculation.
-        timestamp: u64,
-    },
-    /// Error from CLI client.
-    Error {
-        /// Error message description.
-        message: String,
-    },
-}
-
-/// CLI-specific response message types.
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-enum CliResponseMessage {
-    /// Response to open session request.
-    OpenSession {
-        /// The session name that was created.
-        name: String,
-        /// Authentication token for the session.
-        token: String,
-        /// Public URL to access the session.
-        url: String,
-    },
-    /// Response to close session request.
-    CloseSession {},
-    /// Response to start channel request.
-    StartChannel {},
-    /// Terminal input from web clients.
-    TerminalInput {
-        /// Shell ID this input is for.
-        id: u32,
-        /// Input data bytes from the user.
-        data: Bytes,
-        /// Byte offset in the terminal stream.
-        offset: u64,
-    },
-    /// Request to create new shell.
-    CreateShell {
-        /// The shell ID to create.
-        id: u32,
-        /// Initial x-coordinate for the shell window.
-        x: i32,
-        /// Initial y-coordinate for the shell window.
-        y: i32,
-    },
-    /// Request to close shell.
-    CloseShell {
-        /// The shell ID to close.
-        id: u32,
-    },
-    /// Sequence number synchronization.
-    Sync {
-        /// Map of shell IDs to their current sequence numbers.
-        sequence_numbers: std::collections::HashMap<u32, u64>,
-    },
-    /// Terminal resize request.
-    Resize {
-        /// Shell ID to resize.
-        id: u32,
-        /// New number of rows for the terminal.
-        rows: u32,
-        /// New number of columns for the terminal.
-        cols: u32,
-    },
-    /// Ping request for latency measurement.
-    Ping {
-        /// Unix timestamp for latency calculation.
-        timestamp: u64,
-    },
-    /// Error response.
-    Error {
-        /// Error message description.
-        message: String,
-    },
-}
 
 /// Transport abstraction for sshx server communication.
 ///
@@ -318,7 +175,7 @@ pub struct WebSocketTransport {
     /// Channel for receiving server messages.
     server_rx: Arc<Mutex<mpsc::Receiver<ServerUpdate>>>,
     /// Request correlation map for matching responses.
-    pending_requests: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<CliResponseMessage>>>>,
+    pending_requests: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<cli_response::CliResponseMessage>>>>,
     /// Background task handle for the WebSocket reader.
     _reader_task: tokio::task::JoinHandle<()>,
     /// Next request ID counter.
@@ -346,7 +203,7 @@ impl WebSocketTransport {
         let (server_tx, server_rx) = mpsc::channel(256);
         let server_rx = Arc::new(Mutex::new(server_rx));
         
-        let pending_requests: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<CliResponseMessage>>>> = 
+        let pending_requests: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<cli_response::CliResponseMessage>>>> = 
             Arc::new(Mutex::new(HashMap::new()));
         
         let next_request_id = Arc::new(Mutex::new(0));
@@ -371,7 +228,7 @@ impl WebSocketTransport {
     fn spawn_reader_task(
         mut read: SplitStream<WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>>,
         server_tx: mpsc::Sender<ServerUpdate>,
-        pending_requests: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<CliResponseMessage>>>>,
+        pending_requests: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<cli_response::CliResponseMessage>>>>,
     ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             debug!("WebSocket reader task started");
@@ -379,11 +236,14 @@ impl WebSocketTransport {
             while let Some(msg) = read.next().await {
                 message_count += 1;
                 match msg {
-                    Ok(Message::Text(text)) => {
-                        debug!(message_count = %message_count, text_len = text.len(), "Received WebSocket text message");
-                        if let Err(e) = Self::handle_text_message(&text, &server_tx, &pending_requests).await {
+                    Ok(Message::Binary(data)) => {
+                        debug!(message_count = %message_count, data_len = data.len(), "Received WebSocket binary message");
+                        if let Err(e) = Self::handle_binary_message(&data, &server_tx, &pending_requests).await {
                             debug!(message_count = %message_count, "Error handling WebSocket message: {}", e);
                         }
+                    }
+                    Ok(Message::Text(text)) => {
+                        debug!(message_count = %message_count, "Ignoring text message (expected binary): {}", text);
                     }
                     Ok(Message::Close(frame)) => {
                         debug!(message_count = %message_count, ?frame, "WebSocket connection closed by server");
@@ -400,68 +260,62 @@ impl WebSocketTransport {
         })
     }
     
-    /// Handle incoming text messages from the WebSocket.
-    async fn handle_text_message(
-        text: &str,
+    /// Handle incoming binary messages from the WebSocket.
+    async fn handle_binary_message(
+        data: &[u8],
         server_tx: &mpsc::Sender<ServerUpdate>,
-        pending_requests: &Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<CliResponseMessage>>>>,
+        pending_requests: &Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<cli_response::CliResponseMessage>>>>,
     ) -> Result<()> {
         // Try to parse as CLI response first
-        if let Ok(response) = serde_json::from_str::<CliResponse>(text) {
+        if let Ok(response) = CliResponse::decode(data) {
             // Handle streaming messages (sent with "server_update" ID)
             if response.id == "server_update" {
-                debug!("Received server update: {:?}", response.message);
-                let server_update = Self::cli_response_to_server_update(response.message)?;
-                let _ = server_tx.send(server_update).await;
+                debug!("Received server update: {:?}", response.cli_response_message);
+                if let Some(msg) = response.cli_response_message {
+                    let server_update = Self::cli_response_to_server_update(msg)?;
+                    let _ = server_tx.send(server_update).await;
+                }
                 return Ok(());
             }
             
             // Handle request-response messages
             let mut pending = pending_requests.lock().await;
             if let Some(sender) = pending.remove(&response.id) {
-                let _ = sender.send(response.message);
+                if let Some(msg) = response.cli_response_message {
+                    let _ = sender.send(msg);
+                }
             }
             return Ok(());
         }
         
         // If we get here, the message format was invalid
-        debug!("Failed to parse WebSocket message: {}", text);
+        debug!("Failed to parse WebSocket binary message");
         
         Ok(())
     }
     
     /// Convert CLI response message to ServerUpdate for streaming.
-    fn cli_response_to_server_update(cli_msg: CliResponseMessage) -> Result<ServerUpdate> {
+    fn cli_response_to_server_update(cli_msg: cli_response::CliResponseMessage) -> Result<ServerUpdate> {
         let server_message = match cli_msg {
-            CliResponseMessage::TerminalInput { id, data, offset } => {
-                ServerMessage::Input(TerminalInput {
-                    id,
-                    data: data.into(),
-                    offset,
-                })
+            cli_response::CliResponseMessage::TerminalInput(input) => {
+                ServerMessage::Input(input)
             }
-            CliResponseMessage::CreateShell { id, x, y } => {
-                ServerMessage::CreateShell(NewShell { id, x, y })
+            cli_response::CliResponseMessage::CreateShell(new_shell) => {
+                ServerMessage::CreateShell(new_shell)
             }
-            CliResponseMessage::CloseShell { id } => {
+            cli_response::CliResponseMessage::CloseShell(id) => {
                 ServerMessage::CloseShell(id)
             }
-            CliResponseMessage::Sync { sequence_numbers } => {
-                ServerMessage::Sync(SequenceNumbers {
-                    map: sequence_numbers,
-                })
+            cli_response::CliResponseMessage::Sync(seq_nums) => {
+                ServerMessage::Sync(seq_nums)
             }
-            CliResponseMessage::Resize { id, rows, cols } => {
-                ServerMessage::Resize(sshx_core::proto::TerminalSize {
-                    id,
-                    rows,
-                    cols,
-                })
+            cli_response::CliResponseMessage::Resize(resize) => {
+                ServerMessage::Resize(resize)
             }
-            CliResponseMessage::Ping { timestamp } => {
+            cli_response::CliResponseMessage::Ping(timestamp) => {
                 ServerMessage::Ping(timestamp)
             }
-            CliResponseMessage::Error { message } => {
+            cli_response::CliResponseMessage::Error(message) => {
                 ServerMessage::Error(message)
             }
             _ => return Err(anyhow::anyhow!("Unsupported CLI response message for streaming")),
@@ -480,11 +334,11 @@ impl WebSocketTransport {
     }
     
     /// Send a request and wait for response with timeout.
-    async fn send_request(&mut self, message: CliMessage) -> Result<CliResponseMessage> {
+    async fn send_request(&mut self, message: cli_request::CliMessage) -> Result<cli_response::CliResponseMessage> {
         let id = self.next_id().await;
         let request = CliRequest {
             id: id.clone(),
-            message,
+            cli_message: Some(message),
         };
         
         let (tx, rx) = tokio::sync::oneshot::channel();
@@ -493,12 +347,13 @@ impl WebSocketTransport {
             pending.insert(id.clone(), tx);
         }
         
-        let json = serde_json::to_string(&request)
-            .context("Failed to serialize request")?;
+        let mut buf = Vec::new();
+        ProstMessage::encode(&request, &mut buf)
+            .context("Failed to encode protobuf request")?;
         
         {
             let mut write = self.write.lock().await;
-            write.send(Message::Text(json)).await
+            write.send(Message::Binary(buf)).await
                 .context("Failed to send WebSocket message")?;
         }
         
@@ -525,21 +380,16 @@ impl WebSocketTransport {
 #[async_trait]
 impl SshxTransport for WebSocketTransport {
     async fn open(&mut self, request: OpenRequest) -> Result<OpenResponse> {
-        let cli_message = CliMessage::OpenSession {
-            origin: request.origin,
-            encrypted_zeros: request.encrypted_zeros.into(),
-            name: request.name,
-            write_password_hash: request.write_password_hash.map(|h| h.into()),
-        };
+        let cli_message = cli_request::CliMessage::OpenSession(request);
         
         let response = self.send_request(cli_message).await
             .context("WebSocket open request failed")?;
         
         match response {
-            CliResponseMessage::OpenSession { name, token, url } => {
-                Ok(OpenResponse { name, token, url })
+            cli_response::CliResponseMessage::OpenSession(open_response) => {
+                Ok(open_response)
             }
-            CliResponseMessage::Error { message } => {
+            cli_response::CliResponseMessage::Error(message) => {
                 Err(anyhow::anyhow!("Server error: {}", message))
             }
             _ => Err(anyhow::anyhow!("Unexpected response type for open request")),
@@ -565,16 +415,16 @@ impl SshxTransport for WebSocketTransport {
         };
         
         // Send StartChannel request and wait for response
-        let start_channel = CliMessage::StartChannel { name, token };
+        let start_channel = cli_request::CliMessage::StartChannel(ChannelStartRequest { name, token });
         let response = self.send_request(start_channel).await
             .context("Failed to start WebSocket channel")?;
         
         // Verify we got the expected response
         match response {
-            CliResponseMessage::StartChannel {} => {
+            cli_response::CliResponseMessage::StartChannel(_) => {
                 debug!("WebSocket channel started successfully");
             }
-            CliResponseMessage::Error { message } => {
+            cli_response::CliResponseMessage::Error(message) => {
                 return Err(anyhow::anyhow!("Server error starting channel: {}", message));
             }
             _ => {
@@ -613,19 +463,21 @@ impl SshxTransport for WebSocketTransport {
                     
                     let request = CliRequest {
                         id: request_id,
-                        message: cli_message,
+                        cli_message: Some(cli_message),
                     };
                     
-                    let json = match serde_json::to_string(&request) {
-                        Ok(j) => j,
+                    let mut buf = Vec::new();
+                    let result = ProstMessage::encode(&request, &mut buf);
+                    match result {
+                        Ok(()) => {},
                         Err(e) => {
-                            debug!(outbound_count = %outbound_count, "Failed to serialize client message: {}", e);
+                            debug!(outbound_count = %outbound_count, "Failed to encode protobuf message: {}", e);
                             continue;
                         }
                     };
                     
                     let mut write_guard = write.lock().await;
-                    if let Err(e) = write_guard.send(Message::Text(json)).await {
+                    if let Err(e) = write_guard.send(Message::Binary(buf)).await {
                         debug!(outbound_count = %outbound_count, "Failed to send outbound message: {}", e);
                         break;
                     }
@@ -651,17 +503,14 @@ impl SshxTransport for WebSocketTransport {
     }
 
     async fn close(&mut self, request: CloseRequest) -> Result<()> {
-        let cli_message = CliMessage::CloseSession {
-            name: request.name,
-            token: request.token,
-        };
+        let cli_message = cli_request::CliMessage::CloseSession(request);
         
         let response = self.send_request(cli_message).await
             .context("WebSocket close request failed")?;
         
         match response {
-            CliResponseMessage::CloseSession {} => Ok(()),
-            CliResponseMessage::Error { message } => {
+            cli_response::CliResponseMessage::CloseSession(_) => Ok(()),
+            cli_response::CliResponseMessage::Error(message) => {
                 Err(anyhow::anyhow!("Server error: {}", message))
             }
             _ => Err(anyhow::anyhow!("Unexpected response type for close request")),
@@ -696,7 +545,7 @@ impl Drop for WebSocketTransport {
 
 impl WebSocketTransport {
     /// Convert gRPC ClientMessage to CLI message format.
-    fn client_message_to_cli_message(client_message: ClientMessage) -> Result<CliMessage> {
+    fn client_message_to_cli_message(client_message: ClientMessage) -> Result<cli_request::CliMessage> {
         match client_message {
             ClientMessage::Hello(hello) => {
                 // Parse "name,token" format
@@ -704,35 +553,25 @@ impl WebSocketTransport {
                 if parts.len() != 2 {
                     return Err(anyhow::anyhow!("Invalid hello format"));
                 }
-                Ok(CliMessage::StartChannel {
+                Ok(cli_request::CliMessage::StartChannel(ChannelStartRequest {
                     name: parts[0].to_string(),
                     token: parts[1].to_string(),
-                })
+                }))
             }
             ClientMessage::Data(terminal_data) => {
-                Ok(CliMessage::TerminalData {
-                    id: terminal_data.id,
-                    data: terminal_data.data.into(),
-                    seq: terminal_data.seq,
-                })
+                Ok(cli_request::CliMessage::TerminalData(terminal_data))
             }
             ClientMessage::CreatedShell(new_shell) => {
-                Ok(CliMessage::CreatedShell {
-                    id: new_shell.id,
-                    x: new_shell.x,
-                    y: new_shell.y,
-                })
+                Ok(cli_request::CliMessage::CreatedShell(new_shell))
             }
             ClientMessage::ClosedShell(shell_id) => {
-                Ok(CliMessage::ClosedShell {
-                    id: shell_id,
-                })
+                Ok(cli_request::CliMessage::ClosedShell(shell_id))
             }
             ClientMessage::Pong(timestamp) => {
-                Ok(CliMessage::Pong { timestamp })
+                Ok(cli_request::CliMessage::Pong(timestamp))
             }
             ClientMessage::Error(message) => {
-                Ok(CliMessage::Error { message })
+                Ok(cli_request::CliMessage::Error(message))
             }
         }
     }

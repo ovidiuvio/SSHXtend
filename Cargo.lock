@@ -1926,6 +1926,7 @@ dependencies = [
  "futures-util",
  "nix",
  "pin-project",
+ "prost",
  "reqwest",
  "serde",
  "serde_json",

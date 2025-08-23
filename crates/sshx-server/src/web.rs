@@ -182,7 +182,7 @@ fn generate_dashboard_key() -> String {
 /// Start background task to clean up empty dashboards
 pub fn start_dashboard_cleanup() {
     tokio::spawn(async {
-        let mut cleanup_interval = interval(Duration::from_secs(3600)); // Check every hour
+        let mut cleanup_interval = interval(Duration::from_secs(600)); // Check every 10 minutes
         loop {
             cleanup_interval.tick().await;
 

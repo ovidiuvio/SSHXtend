@@ -11,6 +11,6 @@ cd "$(dirname "$0")/.."
 mkdir -p pkg/proto
 
 # Generate protobuf Go code
-protoc --go_out=. --go-grpc_out=. proto/sshx.proto
+protoc --go_out=pkg --go-grpc_out=pkg proto/sshx.proto
 
 echo "Protobuf Go code generated successfully"
