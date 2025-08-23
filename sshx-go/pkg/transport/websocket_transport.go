@@ -11,128 +11,22 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"sshx-go/pkg/proto"
+	"google.golang.org/protobuf/proto"
+	pb "sshx-go/pkg/proto"
 	"sshx-go/pkg/util"
 )
 
-// CliRequest represents a CLI WebSocket request message with correlation ID.
-type CliRequest struct {
-	// ID is unique request ID for correlation.
-	ID string `json:"id"`
-	// Message is the actual request message.
-	Message CliMessage `json:"message"`
-}
+// Using protobuf CliRequest directly from pb package
 
-// CliResponse represents a CLI WebSocket response message with correlation ID.
-type CliResponse struct {
-	// ID is request ID this response corresponds to.
-	ID string `json:"id"`
-	// Message is the actual response message.
-	Message CliResponseMessage `json:"message"`
-}
+// Using protobuf CliResponse directly from pb package
 
-// TerminalDataMessage for streaming terminal data
-type TerminalDataMessage struct {
-	ID   uint32       `json:"id"`
-	Data BytesAsArray `json:"data"`  // Back to JSON arrays - this was working better
-	Seq  uint64       `json:"seq"`
-}
+// Using protobuf types directly from pb package now
 
-// CreatedShellMessage for acknowledging shell creation
-type CreatedShellMessage struct {
-	ID uint32 `json:"id"`
-	X  int32  `json:"x"`
-	Y  int32  `json:"y"`
-}
+// Using protobuf pb.CliRequest_CliMessage directly
 
-// ClosedShellMessage for acknowledging shell closure
-type ClosedShellMessage struct {
-	ID uint32 `json:"id"`
-}
+// Using protobuf pb.CliResponse_CliResponseMessage directly
 
-// PongMessage for latency measurement
-type PongMessage struct {
-	Timestamp uint64 `json:"timestamp"`
-}
-
-// ErrorMessage for client errors
-type ErrorMessage struct {
-	Message string `json:"message"`
-}
-
-// CliMessage represents CLI-specific request message types using tagged union format.
-// This matches the Rust enum CliMessage exactly using tagged union serialization
-type CliMessage struct {
-	OpenSession  *OpenSessionRequest  `json:"openSession,omitempty"`
-	CloseSession *CloseSessionRequest `json:"closeSession,omitempty"`
-	StartChannel *StartChannelRequest `json:"startChannel,omitempty"`
-	TerminalData *TerminalDataMessage `json:"terminalData,omitempty"`
-	CreatedShell *CreatedShellMessage `json:"createdShell,omitempty"`
-	ClosedShell  *ClosedShellMessage  `json:"closedShell,omitempty"`
-	Pong         *PongMessage         `json:"pong,omitempty"`
-	Error        *ErrorMessage        `json:"error,omitempty"`
-}
-
-// CliResponseMessage represents CLI-specific response message types using tagged union format.
-// This matches the Rust enum CliResponseMessage exactly using tagged union serialization
-type CliResponseMessage struct {
-	OpenSession   *OpenSessionResponse   `json:"openSession,omitempty"`
-	CloseSession  *CloseSessionResponse  `json:"closeSession,omitempty"`
-	StartChannel  *StartChannelResponse  `json:"startChannel,omitempty"`
-	TerminalInput *TerminalInputResponse `json:"terminalInput,omitempty"`
-	CreateShell   *CreateShellResponse   `json:"createShell,omitempty"`
-	CloseShell    *CloseShellResponse    `json:"closeShell,omitempty"`
-	Sync          *SyncResponse          `json:"sync,omitempty"`
-	Resize        *ResizeResponse        `json:"resize,omitempty"`
-	Ping          *PingResponse          `json:"ping,omitempty"`
-	Error         *ErrorResponse         `json:"error,omitempty"`
-}
-
-type OpenSessionResponse struct {
-	Name  string `json:"name"`
-	Token string `json:"token"`
-	URL   string `json:"url"`
-}
-
-type CloseSessionResponse struct{}
-
-type StartChannelResponse struct{}
-
-// Typed response structures to preserve precision during JSON unmarshaling
-type TerminalInputResponse struct {
-	ID     uint32 `json:"id"`
-	Data   []uint8 `json:"data"`   // JSON array of integers, not base64
-	Offset uint64  `json:"offset"` // Proper uint64 to preserve large integer precision
-}
-
-
-type CreateShellResponse struct {
-	ID uint32 `json:"id"`
-	X  int32  `json:"x"`
-	Y  int32  `json:"y"`
-}
-
-type CloseShellResponse struct {
-	ID uint32 `json:"id"`
-}
-
-type SyncResponse struct {
-	SequenceNumbers map[string]uint64 `json:"sequenceNumbers"`
-}
-
-type ResizeResponse struct {
-	ID   uint32 `json:"id"`
-	Rows uint32 `json:"rows"`
-	Cols uint32 `json:"cols"`
-}
-
-type PingResponse struct {
-	Timestamp uint64 `json:"timestamp"`
-}
-
-type ErrorResponse struct {
-	Message string `json:"message"`
-}
+// All response types now use protobuf pb.* types directly
 
 // BytesAsArray is a custom type that serializes []byte as JSON array
 type BytesAsArray []byte
@@ -187,7 +81,7 @@ type StartChannelRequest struct {
 
 // responseWriter is a helper for managing correlated WebSocket responses
 type responseWriter struct {
-	pendingRequests map[string]chan CliResponseMessage
+	pendingRequests map[string]chan *pb.CliResponse
 	mu              sync.RWMutex
 	nextID          uint64
 	nextIDMu        sync.Mutex
@@ -195,7 +89,7 @@ type responseWriter struct {
 
 func newResponseWriter() *responseWriter {
 	return &responseWriter{
-		pendingRequests: make(map[string]chan CliResponseMessage),
+		pendingRequests: make(map[string]chan *pb.CliResponse),
 	}
 }
 
@@ -206,23 +100,23 @@ func (rw *responseWriter) nextRequestID() string {
 	return fmt.Sprintf("req_%d", rw.nextID)
 }
 
-func (rw *responseWriter) addPendingRequest(id string, ch chan CliResponseMessage) {
+func (rw *responseWriter) addPendingRequest(id string, ch chan *pb.CliResponse) {
 	rw.mu.Lock()
 	defer rw.mu.Unlock()
 	rw.pendingRequests[id] = ch
 }
 
-func (rw *responseWriter) handleResponse(response CliResponse) {
+func (rw *responseWriter) handleResponse(response *pb.CliResponse) {
 	rw.mu.Lock()
-	ch, exists := rw.pendingRequests[response.ID]
+	ch, exists := rw.pendingRequests[response.Id]
 	if exists {
-		delete(rw.pendingRequests, response.ID)
+		delete(rw.pendingRequests, response.Id)
 	}
 	rw.mu.Unlock()
 	
 	if exists {
 		select {
-		case ch <- response.Message:
+		case ch <- response:
 		default:
 			// Channel might be closed
 		}
@@ -239,7 +133,7 @@ func (rw *responseWriter) removePendingRequest(id string) {
 type WebSocketTransport struct {
 	conn            *websocket.Conn
 	responseWriter  *responseWriter
-	serverUpdates   chan *proto.ServerUpdate
+	serverUpdates   chan *pb.ServerUpdate
 	done            chan struct{}
 	mu              sync.RWMutex
 	closed          bool
@@ -271,7 +165,7 @@ func ConnectWebSocket(endpoint string) (*WebSocketTransport, error) {
 	transport := &WebSocketTransport{
 		conn:           conn,
 		responseWriter: newResponseWriter(),
-		serverUpdates:  make(chan *proto.ServerUpdate, 256),
+		serverUpdates:  make(chan *pb.ServerUpdate, 256),
 		done:           make(chan struct{}),
 	}
 
@@ -283,29 +177,17 @@ func ConnectWebSocket(endpoint string) (*WebSocketTransport, error) {
 }
 
 // Open opens a new session on the server.
-func (w *WebSocketTransport) Open(ctx context.Context, request *proto.OpenRequest) (*proto.OpenResponse, error) {
-	// Send raw bytes as JSON arrays to match server expectations
-	var writePasswordHash *BytesAsArray
-	if request.WritePasswordHash != nil {
-		hash := BytesAsArray(request.WritePasswordHash)
-		writePasswordHash = &hash
-	}
-	
-	req := CliRequest{
-		ID: w.responseWriter.nextRequestID(),
-		Message: CliMessage{
-			OpenSession: &OpenSessionRequest{
-				Origin:            request.Origin,
-				EncryptedZeros:    BytesAsArray(request.EncryptedZeros),
-				Name:              request.Name,
-				WritePasswordHash: writePasswordHash,
-			},
+func (w *WebSocketTransport) Open(ctx context.Context, request *pb.OpenRequest) (*pb.OpenResponse, error) {
+	// Create protobuf CLI request
+	req := &pb.CliRequest{
+		Id: w.responseWriter.nextRequestID(),
+		CliMessage: &pb.CliRequest_OpenSession{
+			OpenSession: request,
 		},
 	}
 
 	// Debug: Log the request being sent
-	jsonBytes, _ := json.Marshal(req)
-	util.DebugLog("WebSocket sending Open request: %s", string(jsonBytes))
+	util.DebugLog("WebSocket sending Open request with session: %s", request.Name)
 	util.DebugLog("Go client encrypted_zeros length: %d bytes", len(request.EncryptedZeros))
 
 	response, err := w.sendRequestWithResponse(ctx, req, 30*time.Second)
@@ -313,30 +195,28 @@ func (w *WebSocketTransport) Open(ctx context.Context, request *proto.OpenReques
 		return nil, fmt.Errorf("WebSocket open request failed: %w", err)
 	}
 
-	// Handle tagged union response format
-	if response.OpenSession != nil {
+	// Handle protobuf response format using type assertion
+	switch resp := response.CliResponseMessage.(type) {
+	case *pb.CliResponse_OpenSession:
+		openResp := resp.OpenSession
 		util.DebugLog("WebSocket Open response: Name=%s, Token=%s, URL=%s", 
-			response.OpenSession.Name, response.OpenSession.Token, response.OpenSession.URL)
-		util.DebugLog("WebSocket session validation - Server returned session name: %s", response.OpenSession.Name)
-		return &proto.OpenResponse{
-			Name:  response.OpenSession.Name,
-			Token: response.OpenSession.Token,
-			Url:   response.OpenSession.URL,
-		}, nil
+			openResp.Name, openResp.Token, openResp.Url)
+		util.DebugLog("WebSocket session validation - Server returned session name: %s", openResp.Name)
+		return openResp, nil
 
-	} else if response.Error != nil {
-		return nil, fmt.Errorf("server error: %s", response.Error.Message)
+	case *pb.CliResponse_Error:
+		return nil, fmt.Errorf("server error: %s", resp.Error)
 
-	} else {
+	default:
 		return nil, fmt.Errorf("unexpected response type for open request")
 	}
 }
 
 // Channel establishes a bidirectional streaming channel for real-time communication.
-func (w *WebSocketTransport) Channel(ctx context.Context) (chan *proto.ServerUpdate, chan *proto.ClientUpdate, error) {
+func (w *WebSocketTransport) Channel(ctx context.Context) (chan *pb.ServerUpdate, chan *pb.ClientUpdate, error) {
 	// Create channels for this streaming session
-	serverChan := make(chan *proto.ServerUpdate, 256)
-	clientChan := make(chan *proto.ClientUpdate, 256)
+	serverChan := make(chan *pb.ServerUpdate, 256)
+	clientChan := make(chan *pb.ClientUpdate, 256)
 	
 	// Handle the protocol in a separate goroutine
 	go func() {
@@ -380,10 +260,10 @@ func (w *WebSocketTransport) Channel(ctx context.Context) (chan *proto.ServerUpd
 		name, token := parts[0], parts[1]
 		
 		// Send StartChannel request and wait for response
-		req := CliRequest{
-			ID: w.responseWriter.nextRequestID(),
-			Message: CliMessage{
-				StartChannel: &StartChannelRequest{
+		req := &pb.CliRequest{
+			Id: w.responseWriter.nextRequestID(),
+			CliMessage: &pb.CliRequest_StartChannel{
+				StartChannel: &pb.ChannelStartRequest{
 					Name:  name,
 					Token: token,
 				},
@@ -397,12 +277,13 @@ func (w *WebSocketTransport) Channel(ctx context.Context) (chan *proto.ServerUpd
 		}
 		
 		// Verify we got the expected response
-		if response.StartChannel != nil {
+		switch response.CliResponseMessage.(type) {
+		case *pb.CliResponse_StartChannel:
 			util.DebugLog("WebSocket channel started successfully")
-		} else if response.Error != nil {
-			log.Printf("Server error starting channel: %s", response.Error.Message)
+		case *pb.CliResponse_Error:
+			log.Printf("Server error starting channel: %s", response.GetError())
 			return
-		} else {
+		default:
 			log.Printf("Unexpected response to StartChannel")
 			return
 		}
@@ -431,20 +312,42 @@ func (w *WebSocketTransport) Channel(ctx context.Context) (chan *proto.ServerUpd
 					continue
 				}
 				
-				// Skip empty messages (Hello already handled)
-				if isEmptyCliMessage(cliMsg) {
+				// Skip if no cli message was created
+				if cliMsg == nil {
 					continue
 				}
 				
 				// Create streaming request - these don't get individual responses
 				requestID := fmt.Sprintf("stream_%d", time.Now().UnixNano())
-				req := CliRequest{
-					ID:      requestID,
-					Message: cliMsg,
+				// Convert interface{} to the right protobuf oneof type
+				var cliMessage interface{}
+				if cliMsg != nil {
+					cliMessage = cliMsg
 				}
 				
-				// Serialize to JSON
-				jsonData, err := json.Marshal(req)
+				// Type assert to the correct protobuf oneof interface
+				req := &pb.CliRequest{
+					Id: requestID,
+				}
+				
+				// Set the cli message field based on type
+				switch msg := cliMessage.(type) {
+				case *pb.CliRequest_TerminalData:
+					req.CliMessage = msg
+				case *pb.CliRequest_CreatedShell:
+					req.CliMessage = msg
+				case *pb.CliRequest_ClosedShell:
+					req.CliMessage = msg
+				case *pb.CliRequest_Pong:
+					req.CliMessage = msg
+				case *pb.CliRequest_Error:
+					req.CliMessage = msg
+				default:
+					continue // Skip unsupported message types
+				}
+				
+				// Serialize to protobuf binary
+				data, err := proto.Marshal(req)
 				if err != nil {
 					log.Printf("Failed to serialize client message: %v", err)
 					continue
@@ -457,14 +360,14 @@ func (w *WebSocketTransport) Channel(ctx context.Context) (chan *proto.ServerUpd
 					log.Printf("WebSocket transport closed while sending message #%d", messageCount)
 					return
 				}
-				err = w.conn.WriteMessage(websocket.TextMessage, jsonData)
+				err = w.conn.WriteMessage(websocket.BinaryMessage, data)
 				w.mu.Unlock()
 				
 				if err != nil {
 					log.Printf("WebSocket failed to send outbound message #%d: %v", messageCount, err)
 					return
 				}
-				util.DebugLog("WebSocket sent streaming message #%d: %s", messageCount, string(jsonData))
+				util.DebugLog("WebSocket sent streaming message #%d (%d bytes)", messageCount, len(data))
 				
 			case <-ctx.Done():
 				return
@@ -511,14 +414,11 @@ func (w *WebSocketTransport) Channel(ctx context.Context) (chan *proto.ServerUpd
 }
 
 // Close closes an existing session on the server.
-func (w *WebSocketTransport) Close(ctx context.Context, request *proto.CloseRequest) error {
-	req := CliRequest{
-		ID: w.responseWriter.nextRequestID(),
-		Message: CliMessage{
-			CloseSession: &CloseSessionRequest{
-				Name:  request.Name,
-				Token: request.Token,
-			},
+func (w *WebSocketTransport) Close(ctx context.Context, request *pb.CloseRequest) error {
+	req := &pb.CliRequest{
+		Id: w.responseWriter.nextRequestID(),
+		CliMessage: &pb.CliRequest_CloseSession{
+			CloseSession: request,
 		},
 	}
 
@@ -528,11 +428,12 @@ func (w *WebSocketTransport) Close(ctx context.Context, request *proto.CloseRequ
 	}
 
 	// Handle tagged union response format
-	if response.CloseSession != nil {
+	switch response.CliResponseMessage.(type) {
+	case *pb.CliResponse_CloseSession:
 		return nil
-	} else if response.Error != nil {
-		return fmt.Errorf("server error: %s", response.Error.Message)
-	} else {
+	case *pb.CliResponse_Error:
+		return fmt.Errorf("server error: %s", response.GetError())
+	default:
 		return fmt.Errorf("unexpected response type for close request")
 	}
 }
@@ -574,21 +475,30 @@ func (w *WebSocketTransport) Cleanup() error {
 }
 
 // sendRequestWithResponse sends a request and waits for a correlated response.
-func (w *WebSocketTransport) sendRequestWithResponse(ctx context.Context, req CliRequest, timeout time.Duration) (CliResponseMessage, error) {
-	responseCh := make(chan CliResponseMessage, 1)
-	w.responseWriter.addPendingRequest(req.ID, responseCh)
+func (w *WebSocketTransport) sendRequestWithResponse(ctx context.Context, req *pb.CliRequest, timeout time.Duration) (*pb.CliResponse, error) {
+	responseCh := make(chan *pb.CliResponse, 1)
+	w.responseWriter.addPendingRequest(req.Id, responseCh)
 
-	// Send the request
+	// Send the request as binary protobuf
 	w.mu.RLock()
 	if w.closed {
 		w.mu.RUnlock()
-		return CliResponseMessage{}, fmt.Errorf("transport is closed")
+		return nil, fmt.Errorf("transport is closed")
 	}
 
-	if err := w.conn.WriteJSON(req); err != nil {
+	// Marshal protobuf to binary
+	data, err := proto.Marshal(req)
+	if err != nil {
 		w.mu.RUnlock()
-		w.responseWriter.removePendingRequest(req.ID)
-		return CliResponseMessage{}, fmt.Errorf("failed to send request: %w", err)
+		w.responseWriter.removePendingRequest(req.Id)
+		return nil, fmt.Errorf("failed to marshal protobuf request: %w", err)
+	}
+
+	// Send binary message
+	if err := w.conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
+		w.mu.RUnlock()
+		w.responseWriter.removePendingRequest(req.Id)
+		return nil, fmt.Errorf("failed to send binary request: %w", err)
 	}
 	w.mu.RUnlock()
 
@@ -600,10 +510,10 @@ func (w *WebSocketTransport) sendRequestWithResponse(ctx context.Context, req Cl
 	case response := <-responseCh:
 		return response, nil
 	case <-timeoutCtx.Done():
-		w.responseWriter.removePendingRequest(req.ID)
-		return CliResponseMessage{}, fmt.Errorf("request timed out")
+		w.responseWriter.removePendingRequest(req.Id)
+		return nil, fmt.Errorf("request timed out")
 	case <-w.done:
-		return CliResponseMessage{}, fmt.Errorf("transport closed")
+		return nil, fmt.Errorf("transport closed")
 	}
 }
 
@@ -656,16 +566,21 @@ func (w *WebSocketTransport) readLoop() {
 
 // handleIncomingMessage processes incoming WebSocket messages.
 func (w *WebSocketTransport) handleIncomingMessage(message []byte) error {
-	// Try to parse as a correlated response first
-	var cliResponse CliResponse
-	if err := json.Unmarshal(message, &cliResponse); err == nil && cliResponse.ID != "" {
-		util.DebugLog("Successfully parsed CliResponse with ID: %s", cliResponse.ID)
+	// Try to parse as a protobuf CliResponse first
+	var cliResponse pb.CliResponse
+	if err := proto.Unmarshal(message, &cliResponse); err == nil && cliResponse.Id != "" {
+		util.DebugLog("Successfully parsed CliResponse with ID: %s", cliResponse.Id)
 		// Handle streaming messages (sent with "server_update" ID) - matches Rust implementation
-		if cliResponse.ID == "server_update" {
-			util.DebugLog("WebSocket received server_update message: %+v", cliResponse.Message)
-			serverUpdate, err := CliResponseToServerUpdate(cliResponse.Message)
+		if cliResponse.Id == "server_update" {
+			util.DebugLog("WebSocket received server_update message: %+v", cliResponse.CliResponseMessage)
+			// Convert the CliResponse to ServerUpdate directly - with protobuf, the types are compatible
+			if cliResponse.CliResponseMessage == nil {
+				return fmt.Errorf("received server_update with no response message")
+			}
+			
+			serverUpdate, err := CliResponseToServerUpdate(cliResponse.CliResponseMessage)
 			if err != nil {
-				log.Printf("Failed to convert server_update to ServerUpdate: %v, message: %+v", err, cliResponse.Message)
+				log.Printf("Failed to convert server_update to ServerUpdate: %v, message: %+v", err, cliResponse.CliResponseMessage)
 				return fmt.Errorf("failed to convert CLI response to server update: %w", err)
 			}
 			util.DebugLog("WebSocket converted to ServerUpdate: %T", serverUpdate.ServerMessage)
@@ -679,7 +594,7 @@ func (w *WebSocketTransport) handleIncomingMessage(message []byte) error {
 		}
 		
 		// Handle regular request-response messages
-		w.responseWriter.handleResponse(cliResponse)
+		w.responseWriter.handleResponse(&cliResponse)
 		return nil
 	}
 
@@ -706,160 +621,105 @@ func parseJSONBytes(value interface{}) []byte {
 	}
 }
 
-// isEmptyCliMessage checks if a CliMessage has no fields set
-func isEmptyCliMessage(msg CliMessage) bool {
-	return msg.OpenSession == nil &&
-		msg.CloseSession == nil &&
-		msg.StartChannel == nil &&
-		msg.TerminalData == nil &&
-		msg.CreatedShell == nil &&
-		msg.ClosedShell == nil &&
-		msg.Pong == nil &&
-		msg.Error == nil
+// isEmptyCliMessage checks if a CliMessage has no fields set (protobuf version)
+func isEmptyCliMessage(msg interface{}) bool {
+	return msg == nil
 }
 
-// ClientUpdateToCliMessage converts a proto.ClientUpdate to a CliMessage.
-func ClientUpdateToCliMessage(update *proto.ClientUpdate) (CliMessage, error) {
+// ClientUpdateToCliMessage converts a pb.ClientUpdate to a protobuf CliMessage.
+func ClientUpdateToCliMessage(update *pb.ClientUpdate) (interface{}, error) {
 	if update == nil {
-		return CliMessage{}, fmt.Errorf("nil client update")
+		return nil, fmt.Errorf("nil client update")
 	}
 	
 	// Handle heartbeat messages (empty ClientUpdate with no ClientMessage)
 	if update.ClientMessage == nil {
 		// Skip heartbeat messages - they don't need to be sent over WebSocket
-		return CliMessage{}, nil
+		return nil, nil
 	}
 
 	switch msg := update.ClientMessage.(type) {
-	case *proto.ClientUpdate_Hello:
+	case *pb.ClientUpdate_Hello:
 		// Hello is handled separately in handleOutgoingClientUpdate
-		return CliMessage{}, nil
-	case *proto.ClientUpdate_Data:
-		return CliMessage{
-			TerminalData: &TerminalDataMessage{
-				ID:   msg.Data.Id,
-				Data: BytesAsArray(msg.Data.Data),  // Back to JSON arrays
-				Seq:  msg.Data.Seq,
-			},
+		return nil, nil
+	case *pb.ClientUpdate_Data:
+		return &pb.CliRequest_TerminalData{
+			TerminalData: msg.Data,
 		}, nil
-	case *proto.ClientUpdate_CreatedShell:
-		return CliMessage{
-			CreatedShell: &CreatedShellMessage{
-				ID: msg.CreatedShell.Id,
-				X:  msg.CreatedShell.X,
-				Y:  msg.CreatedShell.Y,
-			},
+	case *pb.ClientUpdate_CreatedShell:
+		return &pb.CliRequest_CreatedShell{
+			CreatedShell: msg.CreatedShell,
 		}, nil
-	case *proto.ClientUpdate_ClosedShell:
-		return CliMessage{
-			ClosedShell: &ClosedShellMessage{
-				ID: msg.ClosedShell,
-			},
+	case *pb.ClientUpdate_ClosedShell:
+		return &pb.CliRequest_ClosedShell{
+			ClosedShell: msg.ClosedShell,
 		}, nil
-	case *proto.ClientUpdate_Pong:
-		return CliMessage{
-			Pong: &PongMessage{
-				Timestamp: msg.Pong,
-			},
+	case *pb.ClientUpdate_Pong:
+		return &pb.CliRequest_Pong{
+			Pong: msg.Pong,
 		}, nil
-	case *proto.ClientUpdate_Error:
-		return CliMessage{
-			Error: &ErrorMessage{
-				Message: msg.Error,
-			},
+	case *pb.ClientUpdate_Error:
+		return &pb.CliRequest_Error{
+			Error: msg.Error,
 		}, nil
 	default:
-		return CliMessage{}, fmt.Errorf("unsupported client message type: %T", msg)
+		return nil, fmt.Errorf("unsupported client message type: %T", msg)
 	}
 }
 
-// CliResponseToServerUpdate converts a CliResponseMessage to a proto.ServerUpdate.
-func CliResponseToServerUpdate(cliMsg CliResponseMessage) (*proto.ServerUpdate, error) {
-	// Handle tagged union format - check each field for the message type
-	if cliMsg.TerminalInput != nil {
-		// Convert []uint8 to []byte  
-		dataBytes := make([]byte, len(cliMsg.TerminalInput.Data))
-		for i, v := range cliMsg.TerminalInput.Data {
-			dataBytes[i] = byte(v)
-		}
-		
-		return &proto.ServerUpdate{
-			ServerMessage: &proto.ServerUpdate_Input{
-				Input: &proto.TerminalInput{
-					Id:     cliMsg.TerminalInput.ID,
-					Data:   dataBytes,
-					Offset: cliMsg.TerminalInput.Offset, // ← Now preserves full uint64 precision!
-				},
+// CliResponseToServerUpdate converts a protobuf CliResponseMessage to a pb.ServerUpdate.
+func CliResponseToServerUpdate(cliMsg interface{}) (*pb.ServerUpdate, error) {
+	if cliMsg == nil {
+		return nil, fmt.Errorf("nil CLI response message")
+	}
+
+	// Use type switch to handle protobuf oneof interface
+	switch msg := cliMsg.(type) {
+	case *pb.CliResponse_TerminalInput:
+		return &pb.ServerUpdate{
+			ServerMessage: &pb.ServerUpdate_Input{
+				Input: msg.TerminalInput,
 			},
 		}, nil
-	}
-	
-	if cliMsg.CreateShell != nil {
-		return &proto.ServerUpdate{
-			ServerMessage: &proto.ServerUpdate_CreateShell{
-				CreateShell: &proto.NewShell{
-					Id: cliMsg.CreateShell.ID,
-					X:  cliMsg.CreateShell.X,
-					Y:  cliMsg.CreateShell.Y,
-				},
+	case *pb.CliResponse_CreateShell:
+		return &pb.ServerUpdate{
+			ServerMessage: &pb.ServerUpdate_CreateShell{
+				CreateShell: msg.CreateShell,
 			},
 		}, nil
-	}
-	
-	if cliMsg.CloseShell != nil {
-		return &proto.ServerUpdate{
-			ServerMessage: &proto.ServerUpdate_CloseShell{
-				CloseShell: cliMsg.CloseShell.ID,
+	case *pb.CliResponse_CloseShell:
+		return &pb.ServerUpdate{
+			ServerMessage: &pb.ServerUpdate_CloseShell{
+				CloseShell: msg.CloseShell,
 			},
 		}, nil
-	}
-	
-	if cliMsg.Sync != nil {
-		syncMap := make(map[uint32]uint64)
-		for k, v := range cliMsg.Sync.SequenceNumbers {
-			var key uint32
-			fmt.Sscanf(k, "%d", &key)
-			syncMap[key] = v // Now preserves uint64 precision
-		}
-		
-		return &proto.ServerUpdate{
-			ServerMessage: &proto.ServerUpdate_Sync{
-				Sync: &proto.SequenceNumbers{
-					Map: syncMap,
-				},
+	case *pb.CliResponse_Sync:
+		return &pb.ServerUpdate{
+			ServerMessage: &pb.ServerUpdate_Sync{
+				Sync: msg.Sync,
 			},
 		}, nil
-	}
-	
-	if cliMsg.Resize != nil {
-		return &proto.ServerUpdate{
-			ServerMessage: &proto.ServerUpdate_Resize{
-				Resize: &proto.TerminalSize{
-					Id:   cliMsg.Resize.ID,
-					Rows: cliMsg.Resize.Rows,
-					Cols: cliMsg.Resize.Cols,
-				},
+	case *pb.CliResponse_Resize:
+		return &pb.ServerUpdate{
+			ServerMessage: &pb.ServerUpdate_Resize{
+				Resize: msg.Resize,
 			},
 		}, nil
-	}
-	
-	if cliMsg.Ping != nil {
-		return &proto.ServerUpdate{
-			ServerMessage: &proto.ServerUpdate_Ping{
-				Ping: cliMsg.Ping.Timestamp, // Now preserves uint64 precision
+	case *pb.CliResponse_Ping:
+		return &pb.ServerUpdate{
+			ServerMessage: &pb.ServerUpdate_Ping{
+				Ping: msg.Ping,
 			},
 		}, nil
-	}
-	
-	if cliMsg.Error != nil {
-		return &proto.ServerUpdate{
-			ServerMessage: &proto.ServerUpdate_Error{
-				Error: cliMsg.Error.Message,
+	case *pb.CliResponse_Error:
+		return &pb.ServerUpdate{
+			ServerMessage: &pb.ServerUpdate_Error{
+				Error: msg.Error,
 			},
 		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported CLI response message type: %T", msg)
 	}
-	
-	return nil, fmt.Errorf("unknown message type in CliResponseMessage - all fields are nil: %+v", cliMsg)
 }
 
 // pingLoop sends periodic ping frames to keep the WebSocket connection alive.

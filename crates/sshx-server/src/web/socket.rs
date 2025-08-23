@@ -11,6 +11,7 @@ use bytes::Bytes;
 use futures_util::SinkExt;
 use sshx_core::proto::{
     server_update::ServerMessage, NewShell, ServerUpdate, TerminalInput, TerminalSize,
+    SequenceNumbers,
 };
 use sshx_core::Sid;
 use subtle::ConstantTimeEq;
@@ -19,9 +20,9 @@ use tokio_stream::StreamExt;
 use tracing::{debug, error, info_span, warn, Instrument};
 
 use crate::session::Session;
-use crate::web::protocol::{
-    CliMessage, CliRequest, CliResponse, CliResponseMessage, WsClient, WsServer,
-};
+use crate::web::protocol::{WsClient, WsServer};
+use sshx_core::proto::{CliRequest, CliResponse, cli_request, cli_response};
+use prost::Message as ProstMessage;
 
 type ActiveSession = (
     Arc<Session>,
@@ -360,7 +361,7 @@ pub async fn get_cli_ws(
     })
 }
 
-/// Handle CLI WebSocket connection with JSON-based messaging.
+/// Handle CLI WebSocket connection with protobuf messaging.
 async fn handle_cli_socket(
     mut socket: WebSocket,
     state: Arc<ServerState>,
@@ -374,25 +375,26 @@ async fn handle_cli_socket(
     use std::time::SystemTime;
     use tokio::sync::mpsc;
 
-    /// Send a JSON response to the CLI client.
+    /// Send a binary protobuf response to the CLI client.
     async fn send_response(socket: &mut WebSocket, response: CliResponse) -> Result<()> {
-        let json = serde_json::to_string(&response)?;
-        socket.send(Message::Text(json.into())).await?;
+        let mut buf = Vec::new();
+        ProstMessage::encode(&response, &mut buf)?;
+        socket.send(Message::Binary(buf.into())).await?;
         Ok(())
     }
 
-    /// Receive a JSON request from the CLI client.
+    /// Receive a binary protobuf request from the CLI client.
     async fn recv_request(socket: &mut WebSocket) -> Result<Option<CliRequest>> {
         Ok(loop {
             match socket.recv().await.transpose()? {
-                Some(Message::Text(text)) => match serde_json::from_str::<CliRequest>(&text) {
+                Some(Message::Binary(data)) => match ProstMessage::decode(data.as_ref()) {
                     Ok(req) => break Some(req),
                     Err(err) => {
-                        warn!(?err, "failed to parse CLI request");
+                        warn!(?err, "failed to parse CLI protobuf request");
                         continue;
                     }
                 },
-                Some(Message::Binary(_)) => warn!("ignoring binary message from CLI client"),
+                Some(Message::Text(_)) => warn!("ignoring text message from CLI client"),
                 Some(_) => (), // ignore other message types, keep looping
                 None => break None,
             }
@@ -432,8 +434,12 @@ async fn handle_cli_socket(
             request = recv_request(&mut socket) => {
                 match request? {
                     Some(req) => {
-                        let response = match req.message {
-                            CliMessage::OpenSession { origin, encrypted_zeros, name, write_password_hash } => {
+                        let response = match req.cli_message {
+                            Some(cli_request::CliMessage::OpenSession(open_req)) => {
+                                let origin = open_req.origin;
+                                let encrypted_zeros = open_req.encrypted_zeros;
+                                let name = open_req.name;
+                                let write_password_hash = open_req.write_password_hash;
                                 tracing::debug!(
                                     encrypted_zeros_len = encrypted_zeros.len(),
                                     "Received OpenSession request with encrypted_zeros"
@@ -442,9 +448,7 @@ async fn handle_cli_socket(
                                 if origin.is_empty() {
                                     CliResponse {
                                         id: req.id,
-                                        message: CliResponseMessage::Error {
-                                            message: "origin is empty".to_string()
-                                        }
+                                        cli_response_message: Some(cli_response::CliResponseMessage::Error("origin is empty".to_string()))
                                     }
                                 } else {
                                     let session_name = rand_alphanumeric(10);
@@ -452,9 +456,7 @@ async fn handle_cli_socket(
                                     match state.lookup(&session_name) {
                                         Some(_) => CliResponse {
                                             id: req.id,
-                                            message: CliResponseMessage::Error {
-                                                message: "generated duplicate ID".to_string()
-                                            }
+                                            cli_response_message: Some(cli_response::CliResponseMessage::Error("generated duplicate ID".to_string()))
                                         },
                                         None => {
                                             let metadata = crate::session::Metadata {
@@ -473,43 +475,47 @@ async fn handle_cli_socket(
 
                                             CliResponse {
                                                 id: req.id,
-                                                message: CliResponseMessage::OpenSession {
-                                                    name: session_name,
-                                                    token: BASE64_STANDARD.encode(token.into_bytes()),
-                                                    url,
-                                                }
+                                                cli_response_message: Some(cli_response::CliResponseMessage::OpenSession(
+                                                    sshx_core::proto::OpenResponse {
+                                                        name: session_name,
+                                                        token: BASE64_STANDARD.encode(token.into_bytes()),
+                                                        url,
+                                                    }
+                                                ))
                                             }
                                         }
                                     }
                                 }
                             }
 
-                            CliMessage::CloseSession { name, token } => {
+                            Some(cli_request::CliMessage::CloseSession(close_req)) => {
+                                let name = close_req.name;
+                                let token = close_req.token;
                                 match validate_token(state.mac(), &name, &token) {
                                     Ok(()) => {
                                         match state.close_session(&name).await {
                                             Ok(()) => CliResponse {
                                                 id: req.id,
-                                                message: CliResponseMessage::CloseSession {}
+                                                cli_response_message: Some(cli_response::CliResponseMessage::CloseSession(
+                                                    sshx_core::proto::CloseResponse {}
+                                                ))
                                             },
                                             Err(err) => CliResponse {
                                                 id: req.id,
-                                                message: CliResponseMessage::Error {
-                                                    message: err.to_string()
-                                                }
+                                                cli_response_message: Some(cli_response::CliResponseMessage::Error(err.to_string()))
                                             }
                                         }
                                     }
                                     Err(err) => CliResponse {
                                         id: req.id,
-                                        message: CliResponseMessage::Error {
-                                            message: err
-                                        }
+                                        cli_response_message: Some(cli_response::CliResponseMessage::Error(err))
                                     }
                                 }
                             }
 
-                            CliMessage::StartChannel { name: session_name, token } => {
+                            Some(cli_request::CliMessage::StartChannel(channel_req)) => {
+                                let session_name = channel_req.name;
+                                let token = channel_req.token;
                                 match validate_token(state.mac(), &session_name, &token) {
                                     Ok(()) => {
                                         match state.backend_connect(&session_name).await {
@@ -543,99 +549,117 @@ async fn handle_cli_socket(
 
                                                 CliResponse {
                                                     id: req.id,
-                                                    message: CliResponseMessage::StartChannel {}
+                                                    cli_response_message: Some(cli_response::CliResponseMessage::StartChannel(
+                                                        sshx_core::proto::ChannelStartResponse {}
+                                                    ))
                                                 }
                                             }
                                             Ok(None) => CliResponse {
                                                 id: req.id,
-                                                message: CliResponseMessage::Error {
-                                                    message: "session not found".to_string()
-                                                }
+                                                cli_response_message: Some(cli_response::CliResponseMessage::Error("session not found".to_string()))
                                             },
                                             Err(err) => CliResponse {
                                                 id: req.id,
-                                                message: CliResponseMessage::Error {
-                                                    message: err.to_string()
-                                                }
+                                                cli_response_message: Some(cli_response::CliResponseMessage::Error(err.to_string()))
                                             }
                                         }
                                     }
                                     Err(err) => CliResponse {
                                         id: req.id,
-                                        message: CliResponseMessage::Error {
-                                            message: err
-                                        }
+                                        cli_response_message: Some(cli_response::CliResponseMessage::Error(err))
                                     }
                                 }
                             }
 
-                            _ => {
+                            Some(cli_request::CliMessage::TerminalData(data)) => {
                                 if let Some((session, _)) = &active_session {
-                                    // Handle streaming messages similar to gRPC
-                                    match req.message {
-                                        CliMessage::TerminalData { id, data, seq } => {
-                                            session.access();
-                                            if let Err(err) = session.add_data(Sid(id), data, seq) {
-                                                CliResponse {
-                                                    id: req.id,
-                                                    message: CliResponseMessage::Error {
-                                                        message: format!("add data: {:?}", err)
-                                                    }
-                                                }
-                                            } else {
-                                                continue; // No response needed for data
-                                            }
+                                    session.access();
+                                    if let Err(err) = session.add_data(Sid(data.id), data.data, data.seq) {
+                                        CliResponse {
+                                            id: req.id.clone(),
+                                            cli_response_message: Some(cli_response::CliResponseMessage::Error(
+                                                format!("add data: {:?}", err)
+                                            ))
                                         }
-                                        CliMessage::CreatedShell { id, x, y } => {
-                                            session.access();
-                                            if let Err(err) = session.add_shell(Sid(id), (x, y)) {
-                                                CliResponse {
-                                                    id: req.id,
-                                                    message: CliResponseMessage::Error {
-                                                        message: format!("add shell: {:?}", err)
-                                                    }
-                                                }
-                                            } else {
-                                                continue; // No response needed
-                                            }
-                                        }
-                                        CliMessage::ClosedShell { id } => {
-                                            session.access();
-                                            if let Err(err) = session.close_shell(Sid(id)) {
-                                                CliResponse {
-                                                    id: req.id,
-                                                    message: CliResponseMessage::Error {
-                                                        message: format!("close shell: {:?}", err)
-                                                    }
-                                                }
-                                            } else {
-                                                continue; // No response needed
-                                            }
-                                        }
-                                        CliMessage::Pong { timestamp } => {
-                                            session.access();
-                                            let latency = get_time_ms().saturating_sub(timestamp);
-                                            session.send_latency_measurement(latency);
-                                            continue; // No response needed
-                                        }
-                                        CliMessage::Error { message } => {
-                                            error!(?message, "error received from CLI client");
-                                            continue; // No response needed
-                                        }
-                                        _ => CliResponse {
-                                            id: req.id,
-                                            message: CliResponseMessage::Error {
-                                                message: "no active session".to_string()
-                                            }
-                                        }
+                                    } else {
+                                        continue; // No response needed for data
                                     }
                                 } else {
                                     CliResponse {
-                                        id: req.id,
-                                        message: CliResponseMessage::Error {
-                                            message: "no active session".to_string()
-                                        }
+                                        id: req.id.clone(),
+                                        cli_response_message: Some(cli_response::CliResponseMessage::Error(
+                                            "no active session".to_string()
+                                        ))
                                     }
+                                }
+                            }
+
+                            Some(cli_request::CliMessage::CreatedShell(new_shell)) => {
+                                if let Some((session, _)) = &active_session {
+                                    session.access();
+                                    if let Err(err) = session.add_shell(Sid(new_shell.id), (new_shell.x, new_shell.y)) {
+                                        CliResponse {
+                                            id: req.id.clone(),
+                                            cli_response_message: Some(cli_response::CliResponseMessage::Error(
+                                                format!("add shell: {:?}", err)
+                                            ))
+                                        }
+                                    } else {
+                                        continue; // No response needed
+                                    }
+                                } else {
+                                    CliResponse {
+                                        id: req.id.clone(),
+                                        cli_response_message: Some(cli_response::CliResponseMessage::Error(
+                                            "no active session".to_string()
+                                        ))
+                                    }
+                                }
+                            }
+
+                            Some(cli_request::CliMessage::ClosedShell(shell_id)) => {
+                                if let Some((session, _)) = &active_session {
+                                    session.access();
+                                    if let Err(err) = session.close_shell(Sid(shell_id)) {
+                                        CliResponse {
+                                            id: req.id.clone(),
+                                            cli_response_message: Some(cli_response::CliResponseMessage::Error(
+                                                format!("close shell: {:?}", err)
+                                            ))
+                                        }
+                                    } else {
+                                        continue; // No response needed
+                                    }
+                                } else {
+                                    CliResponse {
+                                        id: req.id.clone(),
+                                        cli_response_message: Some(cli_response::CliResponseMessage::Error(
+                                            "no active session".to_string()
+                                        ))
+                                    }
+                                }
+                            }
+
+                            Some(cli_request::CliMessage::Pong(timestamp)) => {
+                                if let Some((session, _)) = &active_session {
+                                    session.access();
+                                    let latency = get_time_ms().saturating_sub(timestamp);
+                                    session.send_latency_measurement(latency);
+                                }
+                                continue; // No response needed
+                            }
+
+                            Some(cli_request::CliMessage::Error(message)) => {
+                                error!(?message, "error received from CLI client");
+                                continue; // No response needed
+                            }
+
+                            None => {
+                                CliResponse {
+                                    id: req.id.clone(),
+                                    cli_response_message: Some(cli_response::CliResponseMessage::Error(
+                                        "empty message received".to_string()
+                                    ))
                                 }
                             }
                         };
@@ -668,9 +692,9 @@ async fn handle_cli_socket(
                         Err(err) => {
                             let response = CliResponse {
                                 id: "server_error".to_string(),
-                                message: CliResponseMessage::Error {
-                                    message: err.to_string()
-                                }
+                                cli_response_message: Some(cli_response::CliResponseMessage::Error(
+                                    err.to_string()
+                                ))
                             };
                             send_response(&mut socket, response).await?;
                         }
@@ -693,32 +717,46 @@ async fn handle_cli_socket(
 /// Convert gRPC ServerMessage to CLI response format.
 fn convert_server_message_to_cli(message: ServerMessage) -> CliResponse {
     let response_message = match message {
-        ServerMessage::Input(input) => CliResponseMessage::TerminalInput {
-            id: input.id,
-            data: input.data,
-            offset: input.offset,
+        ServerMessage::Input(input) => {
+            cli_response::CliResponseMessage::TerminalInput(TerminalInput {
+                id: input.id,
+                data: input.data,
+                offset: input.offset,
+            })
         },
-        ServerMessage::CreateShell(new_shell) => CliResponseMessage::CreateShell {
-            id: new_shell.id,
-            x: new_shell.x,
-            y: new_shell.y,
+        ServerMessage::CreateShell(new_shell) => {
+            cli_response::CliResponseMessage::CreateShell(NewShell {
+                id: new_shell.id,
+                x: new_shell.x,
+                y: new_shell.y,
+            })
         },
-        ServerMessage::CloseShell(id) => CliResponseMessage::CloseShell { id },
-        ServerMessage::Sync(seq_nums) => CliResponseMessage::Sync {
-            sequence_numbers: seq_nums.map,
+        ServerMessage::CloseShell(id) => {
+            cli_response::CliResponseMessage::CloseShell(id)
         },
-        ServerMessage::Resize(resize) => CliResponseMessage::Resize {
-            id: resize.id,
-            rows: resize.rows,
-            cols: resize.cols,
+        ServerMessage::Sync(seq_nums) => {
+            cli_response::CliResponseMessage::Sync(SequenceNumbers {
+                map: seq_nums.map,
+            })
         },
-        ServerMessage::Ping(timestamp) => CliResponseMessage::Ping { timestamp },
-        ServerMessage::Error(err) => CliResponseMessage::Error { message: err },
+        ServerMessage::Resize(resize) => {
+            cli_response::CliResponseMessage::Resize(TerminalSize {
+                id: resize.id,
+                rows: resize.rows,
+                cols: resize.cols,
+            })
+        },
+        ServerMessage::Ping(timestamp) => {
+            cli_response::CliResponseMessage::Ping(timestamp)
+        },
+        ServerMessage::Error(err) => {
+            cli_response::CliResponseMessage::Error(err)
+        },
     };
 
     CliResponse {
         id: "server_update".to_string(),
-        message: response_message,
+        cli_response_message: Some(response_message),
     }
 }
 

@@ -4,7 +4,7 @@
 syntax = "proto3";
 package sshx;
 
-option go_package = "sshx-go/pkg/proto";
+option go_package = "./proto";
 
 service SshxService {
   // Create a new SSH session for a given computer.
@@ -120,3 +120,44 @@ message SerializedShell {
   uint32 winsize_rows = 8;
   uint32 winsize_cols = 9;
 }
+
+// CLI WebSocket wrapper message with correlation ID for request-response pattern
+message CliRequest {
+  string id = 1; // Unique request ID for correlation
+  oneof cli_message {
+    OpenRequest open_session = 2;
+    CloseRequest close_session = 3;
+    ChannelStartRequest start_channel = 4;
+    TerminalData terminal_data = 5;
+    NewShell created_shell = 6;
+    uint32 closed_shell = 7;
+    fixed64 pong = 8;
+    string error = 9;
+  }
+}
+
+// CLI WebSocket response message with correlation ID
+message CliResponse {
+  string id = 1; // Request ID this response corresponds to
+  oneof cli_response_message {
+    OpenResponse open_session = 2;
+    CloseResponse close_session = 3;
+    ChannelStartResponse start_channel = 4;
+    TerminalInput terminal_input = 5;
+    NewShell create_shell = 6;
+    uint32 close_shell = 7;
+    SequenceNumbers sync = 8;
+    TerminalSize resize = 9;
+    fixed64 ping = 10;
+    string error = 11;
+  }
+}
+
+// Request to start bidirectional streaming for a session
+message ChannelStartRequest {
+  string name = 1;  // Session name to start streaming for
+  string token = 2; // Authentication token for the session
+}
+
+// Response to channel start request
+message ChannelStartResponse {}
