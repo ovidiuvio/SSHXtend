@@ -43,6 +43,7 @@ tower = { version = "0.4.13", features = ["steer"] }
 tower-http = { version = "0.6.2", features = ["fs", "redirect", "trace"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
+zip = "2.2.0"
 zstd = "0.12.4"
 
 [dev-dependencies]
