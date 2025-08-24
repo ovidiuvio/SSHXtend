@@ -1584,31 +1584,33 @@ ${fullContext}`;
           />
         </button>
       {/if}
-      <div class="relative">
-        <button
-          class="w-4 h-4 p-0.5 rounded hover:bg-theme-bg-tertiary transition-colors"
-          title="Export terminal session"
-          on:mousedown={(event) => {
-            if (event.button === 0) {
-              event.stopPropagation();
-              showExportModal = true;
-            }
-          }}
-        >
-          <DownloadIcon
-            class="w-full h-full text-theme-fg-secondary"
-            strokeWidth={2}
+      {#if $settings.downloadButtonEnabled}
+        <div class="relative">
+          <button
+            class="w-4 h-4 p-0.5 rounded hover:bg-theme-bg-tertiary transition-colors"
+            title="Export terminal session"
+            on:mousedown={(event) => {
+              if (event.button === 0) {
+                event.stopPropagation();
+                showExportModal = true;
+              }
+            }}
+          >
+            <DownloadIcon
+              class="w-full h-full text-theme-fg-secondary"
+              strokeWidth={2}
+            />
+          </button>
+          
+          <ExportModal
+            bind:open={showExportModal}
+            hasSelection={term?.hasSelection() || false}
+            terminalTitle={currentTitle}
+            on:export={handleRichExport}
+            on:close={() => showExportModal = false}
           />
-        </button>
-        
-        <ExportModal
-          bind:open={showExportModal}
-          hasSelection={term?.hasSelection() || false}
-          terminalTitle={currentTitle}
-          on:export={handleRichExport}
-          on:close={() => showExportModal = false}
-        />
-      </div>
+        </div>
+      {/if}
     </div>
   </div>
   <div

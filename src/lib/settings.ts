@@ -53,6 +53,8 @@ export type Settings = {
   // Copy button settings
   copyButtonEnabled: boolean;
   copyButtonFormat: CopyFormat;
+  // Download button setting
+  downloadButtonEnabled: boolean;
   aiEnabled: boolean;
   aiProvider: AIProvider;
   // Gemini settings
@@ -142,6 +144,11 @@ export const settings: Readable<Settings> = derived(
     let copyButtonFormat = $storedSettings.copyButtonFormat;
     if (!copyButtonFormat || !["html", "ansi", "txt", "markdown"].includes(copyButtonFormat)) {
       copyButtonFormat = "ansi";
+    }
+
+    let downloadButtonEnabled = $storedSettings.downloadButtonEnabled;
+    if (typeof downloadButtonEnabled !== "boolean") {
+      downloadButtonEnabled = true;
     }
 
     let aiEnabled = $storedSettings.aiEnabled;
@@ -237,6 +244,7 @@ export const settings: Readable<Settings> = derived(
       middleClickPaste,
       copyButtonEnabled,
       copyButtonFormat,
+      downloadButtonEnabled,
       aiEnabled,
       aiProvider,
       geminiApiKey,

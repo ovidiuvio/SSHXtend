@@ -21,6 +21,7 @@
   let inputMiddleClickPaste: boolean;
   let inputCopyButtonEnabled: boolean;
   let inputCopyButtonFormat: CopyFormat;
+  let inputDownloadButtonEnabled: boolean;
   let inputAIEnabled: boolean;
   let inputAIProvider: AIProvider;
   let inputGeminiApiKey: string;
@@ -96,6 +97,7 @@
     inputMiddleClickPaste = $settings.middleClickPaste;
     inputCopyButtonEnabled = $settings.copyButtonEnabled;
     inputCopyButtonFormat = $settings.copyButtonFormat;
+    inputDownloadButtonEnabled = $settings.downloadButtonEnabled;
     inputAIEnabled = $settings.aiEnabled;
     inputAIProvider = $settings.aiProvider;
     inputGeminiApiKey = $settings.geminiApiKey;
@@ -422,6 +424,24 @@
           </div>
         </div>
       {/if}
+      <div class="item">
+        <div>
+          <p class="item-title">Download Button</p>
+          <p class="item-subtitle">
+            Show a download/export button in the terminal title bar to export terminal content.
+          </p>
+        </div>
+        <div>
+          <label class="switch">
+            <input
+              type="checkbox"
+              bind:checked={inputDownloadButtonEnabled}
+              on:change={() => updateSettings({ downloadButtonEnabled: inputDownloadButtonEnabled })}
+            />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
     {:else if activeTab === "ai"}
       <!-- AI Tab -->
       <div class="item">
