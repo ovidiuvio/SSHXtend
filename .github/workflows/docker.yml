@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  BASE_IMAGE_NAME: ${{ github.repository }}/sshx-server
+  BASE_IMAGE_NAME: ${{ github.repository }}/sshxtend-server
 
 jobs:
   build:
