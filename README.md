@@ -38,7 +38,7 @@ Web-based dashboards to monitor and manage sessions by groups:
 ```bash
 # Create a new dashboard when connecting
 sshx --dashboard
-# Output: Dashboard URL: https://sshx.io/d/xK9mP2nQ7vR4sT6w
+# Output: Dashboard URL: https://sshx.stream/d/xK9mP2nQ7vR4sT6w
 
 # Join an existing dashboard
 sshx --dashboard xK9mP2nQ7vR4sT6w
