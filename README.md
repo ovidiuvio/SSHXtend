@@ -140,19 +140,29 @@ sshx --service start|stop|uninstall
 ```
 
 ### 🐹 **Go Client Alternative**
-Additional Go-based client implementation in `sshx-go/` for platforms where the Rust client isn't fully supported or available:
-- Broader platform compatibility
-- Easier deployment in Go-based environments
-- Alternative for systems with Rust compilation issues
+Additional Go-based client implementation in `sshx-go/` with enhanced capabilities:
+- **Extended Architecture Support**: MIPS, MIPS64, RISC-V, s390x architectures
+- **Systemd Service Integration**: Built-in service installation and management
+- **Transport Compatibility**: Automatic gRPC → WebSocket fallback matching Rust client
+- **Static Binaries**: CGO-disabled builds for easy deployment
+- **Alternative for Exotic Platforms**: Supports architectures not covered by Rust toolchain
+
+### 🖥️ **SSH-Like Terminal Client** (NEW)
+Introducing `sshx-term` - a dedicated terminal client for direct session access:
+- **SSH-Like Experience**: Connect directly to existing sessions from command line
+- **Interactive Terminal Selection**: TUI selector for multi-terminal sessions
+- **Smart Connection Logic**: Automatic terminal detection and creation
+- **Raw Terminal Mode**: Full terminal capabilities with proper signal handling
+- **WebSocket Protocol**: Uses same secure protocol as web frontend
 
 ### 🐳 **Ready-to-Use Docker Images**
 Pre-built Docker images for instant deployment:
 ```bash
-# Server image
+# Server image (multi-stage build: Rust + SvelteKit frontend)
 docker pull ghcr.io/ovidiuvio/sshxtend-server:latest
 
-# Client
-TODO
+# Production deployment with Redis
+docker compose up -d  # Includes Redis 7.2 on port 12601
 ```
 
 ## 🚀 Quick Start
@@ -174,26 +184,44 @@ TODO
 4. **Customize your experience:** Click the gear icon in the terminal toolbar to access settings
 5. **Enable AI assistant:** Add your API key in Settings and start using AI help with `Ctrl+Shift+A`
 
-### Traditional Installation
+### Installation Options
 
-**🔴 CRITICAL:** The original sshx binaries are **completely incompatible** with SSHXtend due to protocol and feature differences. You **MUST** build from this repository:
-
+#### **Option 1: Automated Installation (Recommended)**
 ```bash
-# ✅ REQUIRED: Build SSHXtend from source
-git clone https://github.com/ovidiuvio/sshx
-cd sshx
-cargo install --path crates/sshx
-cargo install --path crates/sshx-server
+# Multi-platform installer (Linux, macOS, FreeBSD)
+curl -sSf https://raw.githubusercontent.com/ovidiuvio/sshx/main/static/get | sh
 
-# ❌ DO NOT USE: Original sshx (will fail to connect)
-# curl -sSf https://sshx.io/get | sh  # This will NOT work with SSHXtend servers
+# Installation modes:
+curl -sSf ... | sh -s install   # System-wide installation (/usr/local/bin)
+curl -sSf ... | sh -s download  # Download to current directory
+curl -sSf ... | sh -s run       # Download and run temporarily
 ```
 
-**Why incompatible?**
-- Enhanced protocol features (dashboard registration, settings sync)
-- Additional command-line arguments (`--dashboard`, `--service`)
-- Modified server endpoints and authentication
-- Extended feature set not present in original client
+#### **Option 2: Build from Source**
+```bash
+# ✅ Build SSHXtend from source
+git clone https://github.com/ovidiuvio/sshx
+cd sshx
+cargo install --path crates/sshx          # CLI client
+cargo install --path crates/sshx-server   # Server
+cargo install --path crates/sshx-term     # SSH-like terminal client
+```
+
+#### **Option 3: Go Client (Extended Architecture Support)**
+```bash
+# For MIPS, RISC-V, s390x, and other exotic architectures
+git clone https://github.com/ovidiuvio/sshx
+cd sshx/sshx-go
+go build -ldflags="-s -w" -o sshxtend-go .
+```
+
+#### **Option 4: GitHub Releases**
+Download pre-built binaries from [GitHub Releases](https://github.com/ovidiuvio/sshx/releases) for:
+- **Linux**: x86_64, aarch64, armv6l, armv7l (musl-based)
+- **macOS**: Intel (x86_64) and Apple Silicon (aarch64)
+- **Windows**: x86_64, i686, aarch64
+- **FreeBSD**: x86_64
+- **Exotic**: MIPS, MIPS64, RISC-V, s390x (Go client)
 
 ## 📖 Usage Examples
 
@@ -237,6 +265,20 @@ sshx-server --listen 0.0.0.0:8051
 # Client with dashboard monitoring
 sshx --dashboard --server https://your-domain.com
 # Automatically generates secure URLs with dashboard monitoring
+```
+
+### SSH-Like Terminal Access
+```bash
+# Connect to existing session with sshx-term
+sshx-term https://your-domain.com/s/kM9pL2nQ7v#R4sT6wXyZ1aB3cD5e
+
+# Interactive terminal selection for multi-terminal sessions
+sshx-term --new https://your-domain.com/s/session-id#secret
+# Creates new terminal if --new flag provided
+
+# Direct terminal connection (single terminal sessions)
+sshx-term wss://your-domain.com/s/session-id#secret
+# Supports multiple URL schemes: http, https, ws, wss
 ```
 
 ## ⌨️ Keyboard Shortcuts
@@ -284,13 +326,36 @@ sudo systemctl start sshx
 - **Toolbar customization**: Position and layout preferences
 - **Advanced display options**: Font weights, zoom controls
 
+## 🏗️ Architecture Overview
+
+SSHXtend uses a sophisticated hybrid architecture with enterprise-grade features:
+
+### **Rust Workspace Structure**
+- **`sshx-core`** (v0.4.1): Shared protobuf definitions, encryption utilities, ID management
+- **`sshx-server`** (v0.4.1): Hybrid gRPC/HTTP server with WebSocket and dashboard management
+- **`sshx`** (v0.4.1): CLI client with service integration and dashboard registration
+- **`sshx-term`** (v0.1.0): SSH-like terminal client for direct session access
+
+### **Frontend Architecture**
+- **SvelteKit**: TypeScript SPA with static site generation
+- **AI Integration**: Dual provider support (Google Gemini, OpenRouter)
+- **Theme System**: 100+ terminal themes with light/dark UI modes
+- **Real-time Communication**: WebSocket with JSON protocol for web clients
+
+### **Protocol Design**
+- **Dual Protocol Support**: Native gRPC for CLI, WebSocket for web/fallback
+- **Intelligent Fallback**: Automatic gRPC → WebSocket with connectivity testing
+- **End-to-End Encryption**: Argon2id + AES-128-CTR with public salt strategy
+- **Session Persistence**: Redis-backed state with CBOR serialization
+
 ## 🔧 Development
 
 ### Prerequisites
-- Rust 1.70+
-- Node.js 18+
-- Redis (for server)
-- Docker & Docker Compose
+- **Rust**: 1.70+ with cross-compilation targets
+- **Node.js**: 18+ with npm/pnpm for frontend
+- **Redis**: 7.2+ for session state management
+- **Docker**: For containerized Redis and deployment testing
+- **Protobuf Compiler**: v29.2+ for gRPC code generation
 
 ### Setup
 ```bash
