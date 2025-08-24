@@ -51,6 +51,8 @@
   import { openRouterService } from "$lib/openrouter";
   import { markdownToAnsi } from "$lib/markdownToAnsi";
   import { contextManager } from "$lib/contextManager";
+  import { ExportManager, type ExportFormat, type ExportOptions } from "$lib/export";
+  import ExportModal from "./ExportModal.svelte";
 
   /** Used to determine Cmd versus Ctrl keyboard shortcuts. */
   const isMac = browser && navigator.platform.startsWith("Mac");
@@ -87,6 +89,9 @@
     term.options.fontSize = $settings.fontSize;
     term.options.fontWeight = $settings.fontWeight;
     term.options.fontWeightBold = $settings.fontWeightBold;
+    
+    // Update export manager when settings change
+    updateExportManager();
   }
 
   async function copyToClipboard(text: string) {
@@ -102,6 +107,8 @@
   let loaded = false;
   let focused = false;
   let currentTitle = "Remote Terminal";
+  let exportManager: ExportManager | null = null;
+  let showExportModal = false;
   
   // AI state for this terminal instance
   interface AIState {
@@ -428,6 +435,57 @@ ${fullContext}`;
     }
   }
 
+  // Rich export functionality
+  async function handleRichExport(event: CustomEvent<{format: ExportFormat; options: ExportOptions}>) {
+    if (!exportManager) {
+      console.error('Export manager not initialized');
+      return;
+    }
+
+    try {
+      const { format, options } = event.detail;
+      const result = await exportManager.export(options);
+      exportManager.downloadExport(result);
+      
+      const formatName = format === 'zip' ? 'ZIP archive' : format.toUpperCase();
+      makeToast({
+        kind: "success",
+        message: `Terminal exported as ${formatName}`,
+      });
+    } catch (error) {
+      console.error('Rich export failed:', error);
+      makeToast({
+        kind: "error",
+        message: `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      });
+    }
+  }
+
+  function updateExportManager() {
+    if (!term || !loaded) return;
+
+    const exportTheme = {
+      background: theme.background || '#000000',
+      foreground: theme.foreground || '#ffffff',
+      cursor: theme.cursor || theme.foreground || '#ffffff',
+      selection: 'rgba(255, 255, 255, 0.3)' // Standard selection color
+    };
+
+    const terminalInfo = {
+      title: currentTitle,
+      rows: rows,
+      cols: cols,
+      fontFamily: $settings.fontFamily,
+      fontSize: $settings.fontSize
+    };
+
+    if (exportManager) {
+      exportManager.updateContext(exportTheme, terminalInfo);
+    } else {
+      exportManager = new ExportManager(term, exportTheme, terminalInfo);
+    }
+  }
+
   function handleWheelSkipXTerm(event: WheelEvent) {
     event.preventDefault(); // Stop native macOS Chrome zooming on pinch.
 
@@ -610,7 +668,7 @@ ${fullContext}`;
       await new Promise((resolve, reject) => {
         sourceImg.onload = resolve;
         sourceImg.onerror = reject;
-        sourceImg.src = sourceDataURL;
+        sourceImg.src = sourceDataURL!; // We checked for null above
       });
       
       // Create small thumbnail (for list)
@@ -919,7 +977,7 @@ ${fullContext}`;
         let text = '';
         
         // Extract text from the row, handling spans and other elements
-        const textContent = row.textContent || row.innerText || '';
+        const textContent = row.textContent || (row as HTMLElement).innerText || '';
         text = textContent.trim();
         
         if (text) {
@@ -1181,6 +1239,9 @@ ${fullContext}`;
 
     typeahead.reset();
     term.loadAddon(typeahead);
+    
+    // Initialize export manager after terminal is loaded
+    updateExportManager();
 
     const utf8 = new TextEncoder();
     
@@ -1460,21 +1521,31 @@ ${fullContext}`;
           <SparklesNewIcon size={14} />
         </button>
       {/if}
-      <button
-        class="w-4 h-4 p-0.5 rounded hover:bg-theme-bg-tertiary transition-colors"
-        title="Download terminal text"
-        on:mousedown={(event) => {
-          if (event.button === 0) {
-            event.stopPropagation();
-            downloadTerminalText();
-          }
-        }}
-      >
-        <DownloadIcon
-          class="w-full h-full text-theme-fg-secondary"
-          strokeWidth={2}
+      <div class="relative">
+        <button
+          class="w-4 h-4 p-0.5 rounded hover:bg-theme-bg-tertiary transition-colors"
+          title="Export terminal session"
+          on:mousedown={(event) => {
+            if (event.button === 0) {
+              event.stopPropagation();
+              showExportModal = true;
+            }
+          }}
+        >
+          <DownloadIcon
+            class="w-full h-full text-theme-fg-secondary"
+            strokeWidth={2}
+          />
+        </button>
+        
+        <ExportModal
+          bind:open={showExportModal}
+          hasSelection={term?.hasSelection() || false}
+          terminalTitle={currentTitle}
+          on:export={handleRichExport}
+          on:close={() => showExportModal = false}
         />
-      </button>
+      </div>
     </div>
   </div>
   <div
