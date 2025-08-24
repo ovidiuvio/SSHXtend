@@ -2,7 +2,7 @@
   import { ChevronDownIcon, MonitorIcon, TypeIcon, CopyIcon, UserIcon, EyeIcon, EyeOffIcon } from "svelte-feather-icons";
   import SparklesIcon from "./icons/SparklesIcon.svelte";
 
-  import { settings, updateSettings, type UITheme, type ToolbarPosition, type AIProvider, type CopyFormat, MODEL_CONTEXT_WINDOWS } from "$lib/settings";
+  import { settings, updateSettings, type UITheme, type ToolbarPosition, type AIProvider, type CopyFormat, type DownloadBehavior, MODEL_CONTEXT_WINDOWS } from "$lib/settings";
   import OverlayMenu from "./OverlayMenu.svelte";
   import themes, { type ThemeName } from "./themes";
 
@@ -22,6 +22,7 @@
   let inputCopyButtonEnabled: boolean;
   let inputCopyButtonFormat: CopyFormat;
   let inputDownloadButtonEnabled: boolean;
+  let inputDownloadButtonBehavior: DownloadBehavior;
   let inputAIEnabled: boolean;
   let inputAIProvider: AIProvider;
   let inputGeminiApiKey: string;
@@ -98,6 +99,7 @@
     inputCopyButtonEnabled = $settings.copyButtonEnabled;
     inputCopyButtonFormat = $settings.copyButtonFormat;
     inputDownloadButtonEnabled = $settings.downloadButtonEnabled;
+    inputDownloadButtonBehavior = $settings.downloadButtonBehavior;
     inputAIEnabled = $settings.aiEnabled;
     inputAIProvider = $settings.aiProvider;
     inputGeminiApiKey = $settings.geminiApiKey;
@@ -442,6 +444,30 @@
           </label>
         </div>
       </div>
+      {#if inputDownloadButtonEnabled}
+        <div class="item">
+          <div>
+            <p class="item-title">Download Behavior</p>
+            <p class="item-subtitle">
+              Choose what happens when clicking the download button.
+            </p>
+          </div>
+          <div>
+            <select
+              bind:value={inputDownloadButtonBehavior}
+              on:change={() => updateSettings({ downloadButtonBehavior: inputDownloadButtonBehavior })}
+              class="text-sm py-2 px-3 bg-theme-bg-secondary border border-theme-border rounded-lg text-theme-fg-primary"
+            >
+              <option value="modal">📋 Show export modal (choose format)</option>
+              <option value="html">🌐 Download HTML directly</option>
+              <option value="ansi">🎨 Download ANSI directly</option>
+              <option value="txt">📄 Download plain text directly</option>
+              <option value="markdown">📝 Download Markdown directly</option>
+              <option value="zip">🗜️ Download all formats (ZIP)</option>
+            </select>
+          </div>
+        </div>
+      {/if}
     {:else if activeTab === "ai"}
       <!-- AI Tab -->
       <div class="item">

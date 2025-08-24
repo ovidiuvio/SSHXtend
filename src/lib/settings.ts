@@ -36,6 +36,7 @@ export const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
 };
 
 export type CopyFormat = "html" | "ansi" | "txt" | "markdown";
+export type DownloadBehavior = "modal" | "html" | "ansi" | "txt" | "markdown" | "zip";
 
 export type Settings = {
   name: string;
@@ -53,8 +54,9 @@ export type Settings = {
   // Copy button settings
   copyButtonEnabled: boolean;
   copyButtonFormat: CopyFormat;
-  // Download button setting
+  // Download button settings
   downloadButtonEnabled: boolean;
+  downloadButtonBehavior: DownloadBehavior;
   aiEnabled: boolean;
   aiProvider: AIProvider;
   // Gemini settings
@@ -151,6 +153,11 @@ export const settings: Readable<Settings> = derived(
       downloadButtonEnabled = true;
     }
 
+    let downloadButtonBehavior = $storedSettings.downloadButtonBehavior;
+    if (!downloadButtonBehavior || !["modal", "html", "ansi", "txt", "markdown", "zip"].includes(downloadButtonBehavior)) {
+      downloadButtonBehavior = "modal";
+    }
+
     let aiEnabled = $storedSettings.aiEnabled;
     if (typeof aiEnabled !== "boolean") {
       aiEnabled = false;
@@ -245,6 +252,7 @@ export const settings: Readable<Settings> = derived(
       copyButtonEnabled,
       copyButtonFormat,
       downloadButtonEnabled,
+      downloadButtonBehavior,
       aiEnabled,
       aiProvider,
       geminiApiKey,

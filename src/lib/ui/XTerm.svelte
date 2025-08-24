@@ -45,7 +45,7 @@
   import themes from "./themes";
   import CircleButton from "./CircleButton.svelte";
   import CircleButtons from "./CircleButtons.svelte";
-  import { settings, type CopyFormat } from "$lib/settings";
+  import { settings, type CopyFormat, type DownloadBehavior } from "$lib/settings";
   import { TypeAheadAddon } from "$lib/typeahead";
   import { geminiService } from "$lib/gemini";
   import { openRouterService } from "$lib/openrouter";
@@ -480,7 +480,50 @@ ${fullContext}`;
     }
   }
 
-  // Rich export functionality
+  // Handle download button click based on behavior setting
+  function handleDownloadClick() {
+    if ($settings.downloadButtonBehavior === 'modal') {
+      // Show the export modal
+      showExportModal = true;
+    } else {
+      // Direct download in specified format
+      directDownload($settings.downloadButtonBehavior as Exclude<DownloadBehavior, 'modal'>);
+    }
+  }
+
+  // Direct download in specified format
+  async function directDownload(format: Exclude<DownloadBehavior, 'modal'>) {
+    if (!exportManager) {
+      console.error('Export manager not initialized');
+      return;
+    }
+
+    try {
+      const result = await exportManager.export({ format: format as any, selectionOnly: false });
+      exportManager.downloadExport(result);
+      
+      const formatNames = {
+        html: 'HTML',
+        ansi: 'ANSI',
+        txt: 'plain text',
+        markdown: 'Markdown',
+        zip: 'ZIP archive'
+      };
+      
+      makeToast({
+        kind: "success",
+        message: `Terminal exported as ${formatNames[format]}`,
+      });
+    } catch (error) {
+      console.error(`Direct download failed for ${format}:`, error);
+      makeToast({
+        kind: "error",
+        message: `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      });
+    }
+  }
+
+  // Rich export functionality (for modal)
   async function handleRichExport(event: CustomEvent<{format: ExportFormat; options: ExportOptions}>) {
     if (!exportManager) {
       console.error('Export manager not initialized');
@@ -1588,11 +1631,11 @@ ${fullContext}`;
         <div class="relative">
           <button
             class="w-4 h-4 p-0.5 rounded hover:bg-theme-bg-tertiary transition-colors"
-            title="Export terminal session"
+            title={$settings.downloadButtonBehavior === 'modal' ? 'Export terminal session' : `Download terminal as ${$settings.downloadButtonBehavior}`}
             on:mousedown={(event) => {
               if (event.button === 0) {
                 event.stopPropagation();
-                showExportModal = true;
+                handleDownloadClick();
               }
             }}
           >
