@@ -38,14 +38,14 @@
   import { createEventDispatcher, onDestroy, onMount } from "svelte";
   import type { Terminal } from "sshx-xterm";
   import { Buffer } from "buffer";
-  import { DownloadIcon } from "svelte-feather-icons";
+  import { DownloadIcon, CodeIcon, FileTextIcon } from "svelte-feather-icons";
   import SparklesIcon from "./icons/SparklesIcon.svelte";
   import SparklesNewIcon from "./icons/SparklesNewIcon.svelte";
 
   import themes from "./themes";
   import CircleButton from "./CircleButton.svelte";
   import CircleButtons from "./CircleButtons.svelte";
-  import { settings } from "$lib/settings";
+  import { settings, type CopyFormat } from "$lib/settings";
   import { TypeAheadAddon } from "$lib/typeahead";
   import { geminiService } from "$lib/gemini";
   import { openRouterService } from "$lib/openrouter";
@@ -104,11 +104,56 @@
     }
   }
 
+  async function copyContentToClipboard(format: CopyFormat = $settings.copyButtonFormat) {
+    if (!exportManager) {
+      console.error('Export manager not initialized');
+      return;
+    }
+
+    try {
+      // Export terminal content in the specified format
+      const result = await exportManager.export({ format, selectionOnly: false });
+      
+      if (result && typeof result.content === 'string') {
+        await navigator.clipboard.writeText(result.content);
+        const formatNames = {
+          html: 'HTML',
+          ansi: 'ANSI',
+          txt: 'text',
+          markdown: 'Markdown'
+        };
+        makeToast({
+          kind: "success",
+          message: `Terminal ${formatNames[format]} copied to clipboard`,
+        });
+      }
+    } catch (error) {
+      console.error(`Failed to copy ${format} to clipboard:`, error);
+      makeToast({
+        kind: "error",
+        message: `Failed to copy ${format}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      });
+    }
+  }
+
   let loaded = false;
   let focused = false;
   let currentTitle = "Remote Terminal";
   let exportManager: ExportManager | null = null;
   let showExportModal = false;
+  
+  // Always use FileText icon regardless of format
+  $: copyButtonIcon = FileTextIcon;
+  
+  $: copyButtonTooltip = (() => {
+    const formats = {
+      html: 'Copy terminal as HTML to clipboard',
+      ansi: 'Copy terminal as ANSI to clipboard',
+      txt: 'Copy terminal as plain text to clipboard',
+      markdown: 'Copy terminal as Markdown to clipboard'
+    };
+    return formats[$settings.copyButtonFormat];
+  })();
   
   // AI state for this terminal instance
   interface AIState {
@@ -1519,6 +1564,24 @@ ${fullContext}`;
           }}
         >
           <SparklesNewIcon size={14} />
+        </button>
+      {/if}
+      {#if $settings.copyButtonEnabled}
+        <button
+          class="w-4 h-4 p-0.5 rounded hover:bg-theme-bg-tertiary transition-colors"
+          title={copyButtonTooltip}
+          on:mousedown={(event) => {
+            if (event.button === 0) {
+              event.stopPropagation();
+              copyContentToClipboard();
+            }
+          }}
+        >
+          <svelte:component 
+            this={copyButtonIcon}
+            class="w-full h-full text-theme-fg-secondary"
+            strokeWidth={2}
+          />
         </button>
       {/if}
       <div class="relative">

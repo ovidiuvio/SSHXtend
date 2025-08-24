@@ -35,6 +35,8 @@ export const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "default": 32000
 };
 
+export type CopyFormat = "html" | "ansi" | "txt" | "markdown";
+
 export type Settings = {
   name: string;
   theme: ThemeName;
@@ -48,6 +50,9 @@ export type Settings = {
   zoomLevel: number;
   copyOnSelect: boolean;
   middleClickPaste: boolean;
+  // Copy button settings
+  copyButtonEnabled: boolean;
+  copyButtonFormat: CopyFormat;
   aiEnabled: boolean;
   aiProvider: AIProvider;
   // Gemini settings
@@ -127,6 +132,16 @@ export const settings: Readable<Settings> = derived(
     let middleClickPaste = $storedSettings.middleClickPaste;
     if (typeof middleClickPaste !== "boolean") {
       middleClickPaste = true;
+    }
+
+    let copyButtonEnabled = $storedSettings.copyButtonEnabled;
+    if (typeof copyButtonEnabled !== "boolean") {
+      copyButtonEnabled = true;
+    }
+
+    let copyButtonFormat = $storedSettings.copyButtonFormat;
+    if (!copyButtonFormat || !["html", "ansi", "txt", "markdown"].includes(copyButtonFormat)) {
+      copyButtonFormat = "ansi";
     }
 
     let aiEnabled = $storedSettings.aiEnabled;
@@ -220,6 +235,8 @@ export const settings: Readable<Settings> = derived(
       zoomLevel,
       copyOnSelect,
       middleClickPaste,
+      copyButtonEnabled,
+      copyButtonFormat,
       aiEnabled,
       aiProvider,
       geminiApiKey,

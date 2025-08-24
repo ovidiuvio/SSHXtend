@@ -2,7 +2,7 @@
   import { ChevronDownIcon, MonitorIcon, TypeIcon, CopyIcon, UserIcon, EyeIcon, EyeOffIcon } from "svelte-feather-icons";
   import SparklesIcon from "./icons/SparklesIcon.svelte";
 
-  import { settings, updateSettings, type UITheme, type ToolbarPosition, type AIProvider, MODEL_CONTEXT_WINDOWS } from "$lib/settings";
+  import { settings, updateSettings, type UITheme, type ToolbarPosition, type AIProvider, type CopyFormat, MODEL_CONTEXT_WINDOWS } from "$lib/settings";
   import OverlayMenu from "./OverlayMenu.svelte";
   import themes, { type ThemeName } from "./themes";
 
@@ -19,6 +19,8 @@
   let inputToolbarPosition: ToolbarPosition;
   let inputCopyOnSelect: boolean;
   let inputMiddleClickPaste: boolean;
+  let inputCopyButtonEnabled: boolean;
+  let inputCopyButtonFormat: CopyFormat;
   let inputAIEnabled: boolean;
   let inputAIProvider: AIProvider;
   let inputGeminiApiKey: string;
@@ -92,6 +94,8 @@
     inputToolbarPosition = $settings.toolbarPosition;
     inputCopyOnSelect = $settings.copyOnSelect;
     inputMiddleClickPaste = $settings.middleClickPaste;
+    inputCopyButtonEnabled = $settings.copyButtonEnabled;
+    inputCopyButtonFormat = $settings.copyButtonFormat;
     inputAIEnabled = $settings.aiEnabled;
     inputAIProvider = $settings.aiProvider;
     inputGeminiApiKey = $settings.geminiApiKey;
@@ -378,6 +382,46 @@
           </label>
         </div>
       </div>
+      <div class="item">
+        <div>
+          <p class="item-title">Copy Button</p>
+          <p class="item-subtitle">
+            Show a copy button in the terminal title bar to copy terminal content to clipboard.
+          </p>
+        </div>
+        <div>
+          <label class="switch">
+            <input
+              type="checkbox"
+              bind:checked={inputCopyButtonEnabled}
+              on:change={() => updateSettings({ copyButtonEnabled: inputCopyButtonEnabled })}
+            />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      {#if inputCopyButtonEnabled}
+        <div class="item">
+          <div>
+            <p class="item-title">Copy Format</p>
+            <p class="item-subtitle">
+              Choose which format to copy when using the copy button.
+            </p>
+          </div>
+          <div>
+            <select
+              bind:value={inputCopyButtonFormat}
+              on:change={() => updateSettings({ copyButtonFormat: inputCopyButtonFormat })}
+              class="text-sm py-2 px-3 bg-theme-bg-secondary border border-theme-border rounded-lg text-theme-fg-primary"
+            >
+              <option value="ansi">🎨 ANSI (terminal codes)</option>
+              <option value="html">🌐 HTML (formatted)</option>
+              <option value="txt">📄 Plain Text</option>
+              <option value="markdown">📝 Markdown</option>
+            </select>
+          </div>
+        </div>
+      {/if}
     {:else if activeTab === "ai"}
       <!-- AI Tab -->
       <div class="item">
