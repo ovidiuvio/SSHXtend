@@ -23,6 +23,7 @@
   let inputCopyButtonFormat: CopyFormat;
   let inputDownloadButtonEnabled: boolean;
   let inputDownloadButtonBehavior: DownloadBehavior;
+  let inputScreenshotButtonEnabled: boolean;
   let inputAIEnabled: boolean;
   let inputAIProvider: AIProvider;
   let inputGeminiApiKey: string;
@@ -100,6 +101,7 @@
     inputCopyButtonFormat = $settings.copyButtonFormat;
     inputDownloadButtonEnabled = $settings.downloadButtonEnabled;
     inputDownloadButtonBehavior = $settings.downloadButtonBehavior;
+    inputScreenshotButtonEnabled = $settings.screenshotButtonEnabled;
     inputAIEnabled = $settings.aiEnabled;
     inputAIProvider = $settings.aiProvider;
     inputGeminiApiKey = $settings.geminiApiKey;
@@ -468,6 +470,24 @@
           </div>
         </div>
       {/if}
+      <div class="item">
+        <div>
+          <p class="item-title">Screenshot Button</p>
+          <p class="item-subtitle">
+            Show a screenshot button in the terminal title bar to capture high-resolution screenshots.
+          </p>
+        </div>
+        <div>
+          <label class="switch">
+            <input
+              type="checkbox"
+              bind:checked={inputScreenshotButtonEnabled}
+              on:change={() => updateSettings({ screenshotButtonEnabled: inputScreenshotButtonEnabled })}
+            />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
     {:else if activeTab === "ai"}
       <!-- AI Tab -->
       <div class="item">

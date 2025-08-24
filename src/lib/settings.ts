@@ -57,6 +57,8 @@ export type Settings = {
   // Download button settings
   downloadButtonEnabled: boolean;
   downloadButtonBehavior: DownloadBehavior;
+  // Screenshot button setting
+  screenshotButtonEnabled: boolean;
   aiEnabled: boolean;
   aiProvider: AIProvider;
   // Gemini settings
@@ -158,6 +160,11 @@ export const settings: Readable<Settings> = derived(
       downloadButtonBehavior = "modal";
     }
 
+    let screenshotButtonEnabled = $storedSettings.screenshotButtonEnabled;
+    if (typeof screenshotButtonEnabled !== "boolean") {
+      screenshotButtonEnabled = true;
+    }
+
     let aiEnabled = $storedSettings.aiEnabled;
     if (typeof aiEnabled !== "boolean") {
       aiEnabled = false;
@@ -253,6 +260,7 @@ export const settings: Readable<Settings> = derived(
       copyButtonFormat,
       downloadButtonEnabled,
       downloadButtonBehavior,
+      screenshotButtonEnabled,
       aiEnabled,
       aiProvider,
       geminiApiKey,

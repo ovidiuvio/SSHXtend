@@ -38,7 +38,7 @@
   import { createEventDispatcher, onDestroy, onMount } from "svelte";
   import type { Terminal } from "sshx-xterm";
   import { Buffer } from "buffer";
-  import { DownloadIcon, CodeIcon, FileTextIcon } from "svelte-feather-icons";
+  import { DownloadIcon, CodeIcon, FileTextIcon, CameraIcon } from "svelte-feather-icons";
   import SparklesIcon from "./icons/SparklesIcon.svelte";
   import SparklesNewIcon from "./icons/SparklesNewIcon.svelte";
 
@@ -477,6 +477,299 @@ ${fullContext}`;
       console.error("Download failed:", e);
       const errorMessage = e instanceof Error ? e.message : String(e);
       console.error("Download error details:", errorMessage);
+    }
+  }
+
+  // High-resolution screenshot using existing thumbnail infrastructure
+  async function takeHighResScreenshot() {
+    if (!term || !termEl) {
+      console.error('Terminal not available for screenshot');
+      makeToast({
+        kind: "error",
+        message: "Terminal not available for screenshot",
+      });
+      return;
+    }
+
+    try {
+      console.log('🖼️ Starting high-resolution screenshot capture...');
+      
+      // Force terminal to refresh before capture
+      if (term) {
+        term.refresh(0, term.rows - 1);
+      }
+      
+      // Wait a frame for render to complete
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      
+      // Find terminal container to include frame and titlebar
+      const termContainer = termEl.closest('.term-container') as HTMLElement;
+      const targetElement = termContainer || termEl;
+      
+      console.log('🎯 Target element for screenshot:', {
+        isTermContainer: targetElement.classList.contains('term-container'),
+        className: targetElement.className,
+        offsetWidth: targetElement.offsetWidth,
+        offsetHeight: targetElement.offsetHeight,
+        clientWidth: targetElement.clientWidth,
+        clientHeight: targetElement.clientHeight,
+        scrollWidth: targetElement.scrollWidth,
+        scrollHeight: targetElement.scrollHeight,
+        boundingRect: targetElement.getBoundingClientRect(),
+        zoomLevel: $settings.zoomLevel,
+        computedZoom: window.getComputedStyle(targetElement).zoom
+      });
+      
+      let screenshotDataURL: string | null = null;
+      
+      // For full frame capture, prioritize DOM screenshot to include titlebar
+      console.log('🌐 Attempting DOM screenshot (prioritized for frame capture)...');
+      try {
+        screenshotDataURL = await captureHighResDOM(targetElement);
+        if (screenshotDataURL && !isDataURLBlank(screenshotDataURL)) {
+          console.log('✅ DOM screenshot successful with frame!');
+        }
+      } catch (error) {
+        console.warn('❌ DOM screenshot failed:', error);
+      }
+      
+      // Fallback to canvas-based capture if DOM failed
+      if (!screenshotDataURL) {
+        console.log('📊 Attempting canvas fallback...');
+        const allCanvases = termEl.querySelectorAll('canvas');
+        console.log(`Found ${allCanvases.length} canvas elements for fallback`);
+        
+        // Try WebGL/2D canvas capture (reusing existing prioritization)
+        const canvasElements = Array.from(allCanvases).map(canvas => {
+          const canvasEl = canvas as HTMLCanvasElement;
+          const isWebGL = canvasEl.getContext('webgl') || canvasEl.getContext('webgl2');
+          const hasData = !isCanvasBlank(canvasEl);
+          return {
+            canvas: canvasEl,
+            isWebGL,
+            hasData,
+            priority: isWebGL && hasData ? 1 : hasData ? 2 : isWebGL ? 3 : 4
+          };
+        }).sort((a, b) => a.priority - b.priority);
+        
+        for (const {canvas: canvasEl, isWebGL} of canvasElements) {
+          const canvasType = isWebGL ? 'WebGL' : '2D';
+          console.log(`🎯 Attempting ${canvasType} fallback capture...`);
+          
+          try {
+            if (isWebGL) {
+              // Wait for multiple frames for WebGL
+              for (let i = 0; i < 3; i++) {
+                await new Promise(resolve => requestAnimationFrame(resolve));
+              }
+            }
+            
+            if (!isCanvasBlank(canvasEl)) {
+              screenshotDataURL = createFullResolutionScreenshot(canvasEl, targetElement);
+              if (screenshotDataURL && !isDataURLBlank(screenshotDataURL)) {
+                console.log(`✅ ${canvasType} fallback successful!`);
+                break;
+              }
+            }
+          } catch (error) {
+            console.warn(`❌ ${canvasType} fallback failed:`, error);
+          }
+        }
+      }
+      
+      if (screenshotDataURL && !isDataURLBlank(screenshotDataURL)) {
+        // Download the screenshot
+        downloadScreenshot(screenshotDataURL);
+        makeToast({
+          kind: "success",
+          message: "High-resolution screenshot saved",
+        });
+      } else {
+        throw new Error('All screenshot methods failed');
+      }
+      
+    } catch (error) {
+      console.error('❌ Screenshot capture failed:', error);
+      makeToast({
+        kind: "error",
+        message: `Screenshot failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      });
+    }
+  }
+  
+  // Create full resolution screenshot from canvas (adapted from thumbnail logic)
+  function createFullResolutionScreenshot(sourceCanvas: HTMLCanvasElement, containerElement: HTMLElement): string | null {
+    try {
+      // Use container dimensions for proper framing
+      const containerRect = containerElement.getBoundingClientRect();
+      const devicePixelRatio = window.devicePixelRatio || 1;
+      
+      // Create high-resolution canvas
+      const screenshotCanvas = document.createElement('canvas');
+      const ctx = screenshotCanvas.getContext('2d');
+      if (!ctx) return null;
+      
+      // Calculate resolution scale - zoom is already in containerRect dimensions
+      const zoomLevel = $settings.zoomLevel || 1;
+      const maxScale = 4; // Back to reasonable cap
+      const optimalScale = Math.min(maxScale, devicePixelRatio * 3);
+      
+      screenshotCanvas.width = containerRect.width * optimalScale;
+      screenshotCanvas.height = containerRect.height * optimalScale;
+      
+      console.log(`🎯 Canvas screenshot: ${screenshotCanvas.width}×${screenshotCanvas.height} (${optimalScale}x scale, zoom: ${zoomLevel})`);
+      
+      // Enable high-quality rendering
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      
+      // Scale context for high resolution
+      ctx.scale(optimalScale, optimalScale);
+      
+      // Create transparent background for canvas fallback
+      ctx.clearRect(0, 0, containerRect.width, containerRect.height);
+      
+      // Calculate canvas position within container
+      const canvasRect = sourceCanvas.getBoundingClientRect();
+      const offsetX = canvasRect.left - containerRect.left;
+      const offsetY = canvasRect.top - containerRect.top;
+      
+      // Draw the terminal canvas content
+      ctx.drawImage(
+        sourceCanvas, 
+        offsetX, offsetY, 
+        canvasRect.width, canvasRect.height
+      );
+      
+      // Add terminal frame styling if it's the container
+      if (containerElement.classList.contains('term-container')) {
+        // Add subtle border to match terminal styling
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(0, 0, containerRect.width, containerRect.height);
+      }
+      
+      return screenshotCanvas.toDataURL('image/png', 1.0);
+    } catch (error) {
+      console.warn('Failed to create full resolution screenshot:', error);
+      return null;
+    }
+  }
+  
+  // Ultra high-resolution DOM capture
+  async function captureHighResDOM(targetElement: HTMLElement): Promise<string | null> {
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      
+      // Simple approach: let html2canvas handle the zoom naturally
+      const devicePixelRatio = window.devicePixelRatio || 1;
+      const zoomLevel = $settings.zoomLevel || 1;
+      const maxScale = 4; // Back to reasonable cap
+      const optimalScale = Math.min(maxScale, devicePixelRatio * 3); // Back to 3x native
+      
+      console.log(`📸 Using resolution scale: ${optimalScale}x (devicePixelRatio: ${devicePixelRatio}, zoom: ${zoomLevel})`);
+      
+      // Get element bounds 
+      const rect = targetElement.getBoundingClientRect();
+      const computedStyle = window.getComputedStyle(targetElement);
+      
+      console.log('📐 Element bounds:', {
+        rect: { width: rect.width, height: rect.height },
+        offset: { width: targetElement.offsetWidth, height: targetElement.offsetHeight },
+        computedZoom: computedStyle.zoom,
+        transform: computedStyle.transform
+      });
+      
+      const canvas = await html2canvas(targetElement, {
+        backgroundColor: null, // Transparent background!
+        scale: optimalScale, // Don't multiply by zoom - causes issues
+        useCORS: true,
+        allowTaint: true,
+        foreignObjectRendering: false,
+        imageTimeout: 3000,
+        removeContainer: false,
+        logging: false,
+        // Let html2canvas detect dimensions naturally - it sees the zoomed element
+        // Don't override width/height - let it auto-detect
+        onclone: (clonedDoc, element) => {
+          // Preserve all styling for high-quality capture
+          element.style.display = 'block';
+          element.style.visibility = 'visible';
+          element.style.opacity = '1';
+          element.style.transform = 'none'; // Remove any transforms that might blur
+          element.style.filter = 'none'; // Remove filters
+          
+          // Minimal styling preservation - don't mess with sizing
+          if (element.classList.contains('term-container')) {
+            // Keep the terminal's actual background and styling
+            const computedStyle = window.getComputedStyle(targetElement);
+            element.style.backgroundColor = computedStyle.backgroundColor;
+            element.style.borderRadius = computedStyle.borderRadius;
+            element.style.border = computedStyle.border;
+          }
+          
+          // Enhance text rendering for screenshots
+          element.style.textRendering = 'optimizeLegibility';
+          element.style.fontSmooth = 'always';
+          element.style.webkitFontSmoothing = 'antialiased';
+          element.style.mozOsxFontSmoothing = 'grayscale';
+          
+          return element;
+        }
+      });
+      
+      console.log(`✅ Ultra-high resolution capture: ${canvas.width}×${canvas.height} pixels`);
+      return canvas.toDataURL('image/png', 1.0); // Maximum PNG quality
+    } catch (error) {
+      console.warn('Ultra-high resolution capture failed, trying standard resolution:', error);
+      
+      // Fallback to standard high resolution with transparency
+      try {
+        const fallbackScale = Math.min(3, window.devicePixelRatio * 2); // Simple fallback scale
+        const canvas = await html2canvas(targetElement, {
+          backgroundColor: null, // Transparent fallback too
+          scale: fallbackScale,
+          useCORS: true,
+          allowTaint: true,
+          foreignObjectRendering: false,
+          imageTimeout: 2000,
+          removeContainer: false,
+          logging: false,
+          onclone: (clonedDoc, element) => {
+            // Minimal fallback styling
+            if (element.classList.contains('term-container')) {
+              const computedStyle = window.getComputedStyle(targetElement);
+              element.style.backgroundColor = computedStyle.backgroundColor;
+              element.style.borderRadius = computedStyle.borderRadius;
+              element.style.border = computedStyle.border;
+            }
+            return element;
+          }
+        });
+        
+        return canvas.toDataURL('image/png', 1.0);
+      } catch (fallbackError) {
+        console.warn('Standard resolution fallback also failed:', fallbackError);
+        return null;
+      }
+    }
+  }
+  
+  // Download screenshot
+  function downloadScreenshot(dataURL: string) {
+    try {
+      const a = document.createElement('a');
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
+      const title = currentTitle.replace(/[^a-zA-Z0-9]/g, "_");
+      
+      a.href = dataURL;
+      a.download = `terminal-screenshot-${title}-${timestamp}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Screenshot download failed:', error);
+      throw error;
     }
   }
 
@@ -1607,6 +1900,23 @@ ${fullContext}`;
           }}
         >
           <SparklesNewIcon size={14} />
+        </button>
+      {/if}
+      {#if $settings.screenshotButtonEnabled}
+        <button
+          class="w-4 h-4 p-0.5 rounded hover:bg-theme-bg-tertiary transition-colors"
+          title="Take ultra-high-resolution screenshot"
+          on:mousedown={(event) => {
+            if (event.button === 0) {
+              event.stopPropagation();
+              takeHighResScreenshot();
+            }
+          }}
+        >
+          <CameraIcon
+            class="w-full h-full text-theme-fg-secondary"
+            strokeWidth={2}
+          />
         </button>
       {/if}
       {#if $settings.copyButtonEnabled}
