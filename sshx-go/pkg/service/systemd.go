@@ -63,7 +63,7 @@ func InstallWithConfig(config ServiceConfig) error {
 // Install installs the sshx service with default configuration.
 func Install() error {
 	return InstallWithConfig(ServiceConfig{
-		Server: "https://sshx.io",
+		Server: "https://sshx.stream",
 	})
 }
 
@@ -152,7 +152,7 @@ func generateServiceFile(config ServiceConfig) string {
 	execStart := binaryPath
 
 	// Add server argument if not default
-	if config.Server != "https://sshx.io" {
+	if config.Server != "https://sshx.stream" {
 		execStart += fmt.Sprintf(" --server %s", config.Server)
 	}
 

@@ -23,21 +23,21 @@ import (
 
 // ANSI color codes to match Rust ansi_term crate
 const (
-	Green       = "\033[32m"
-	BoldGreen   = "\033[1;32m" 
-	Cyan        = "\033[36m"
+	Green         = "\033[32m"
+	BoldGreen     = "\033[1;32m"
+	Cyan          = "\033[36m"
 	UnderlineCyan = "\033[4;36m"
-	Fixed8      = "\033[38;5;8m"  // Gray color for secondary info
-	Reset       = "\033[0m"
+	Fixed8        = "\033[38;5;8m" // Gray color for secondary info
+	Reset         = "\033[0m"
 )
 
 func main() {
 	// Get default values from environment variables - matches Rust implementation
 	defaultServer := os.Getenv("SSHX_SERVER")
 	if defaultServer == "" {
-		defaultServer = "https://sshx.io"
+		defaultServer = "https://sshx.stream"
 	}
-	
+
 	defaultVerbose := os.Getenv("SSHX_VERBOSE") != ""
 
 	var (
@@ -105,7 +105,7 @@ Usage:
 func runSshx(server, shell string, quiet bool, name string, enableReaders bool, serviceCmd string, dashboard bool, dashboardKey string, verbose bool) error {
 	// Initialize logger with verbose mode
 	util.InitLogger(verbose)
-	
+
 	// Handle service commands if present
 	if serviceCmd != "" {
 		return handleServiceCommand(serviceCmd, server, dashboard || dashboardKey != "", enableReaders, name, shell)
@@ -139,7 +139,7 @@ func runSshx(server, shell string, quiet bool, name string, enableReaders bool, 
 	if verbose {
 		connConfig = transport.VerboseConfig()
 	}
-	
+
 	// Create controller using transport abstraction with automatic fallback
 	controller, err := client.NewControllerWithConnection(config, connConfig)
 	if err != nil {
@@ -240,11 +240,11 @@ func handleServiceCommand(serviceCmd, server string, dashboard, enableReaders bo
 
 func getDefaultSessionName() string {
 	sessionName := "unknown"
-	
+
 	if currentUser, err := user.Current(); err == nil {
 		sessionName = currentUser.Username
 	}
-	
+
 	if hostname, err := os.Hostname(); err == nil {
 		// Trim domain information like .lan or .local
 		if parts := strings.Split(hostname, "."); len(parts) > 0 {
@@ -252,7 +252,7 @@ func getDefaultSessionName() string {
 		}
 		sessionName += "@" + hostname
 	}
-	
+
 	return sessionName
 }
 
@@ -299,7 +299,7 @@ func registerWithDashboard(server string, controller interface {
 	WriteURL() *string
 }, displayName string, dashboardKey *string) (*DashboardInfo, error) {
 	dashboardURL := server + "/api/dashboards/register"
-	
+
 	// Prepare request payload - matches Rust RegisterDashboardRequest exactly
 	request := RegisterDashboardRequest{
 		SessionName:  controller.Name(),
@@ -307,32 +307,32 @@ func registerWithDashboard(server string, controller interface {
 		DisplayName:  displayName,
 		DashboardKey: dashboardKey,
 	}
-	
+
 	if writeURL := controller.WriteURL(); writeURL != nil {
 		relativeWriteURL := makeRelativeURL(*writeURL)
 		request.WriteURL = &relativeWriteURL
 	}
-	
+
 	// Convert to JSON
 	jsonData, err := json.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-	
+
 	// Make HTTP POST request
 	resp, err := http.Post(dashboardURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to post to dashboard: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		var response RegisterDashboardResponse
 		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 			return nil, fmt.Errorf("failed to decode response: %w", err)
 		}
 		fmt.Println("\n  ✓ Session registered to dashboard")
-		
+
 		return &DashboardInfo{
 			Key: response.DashboardKey,
 			URL: response.DashboardURL,
@@ -349,7 +349,7 @@ func printGreeting(shell string, controller interface {
 }, connectionMethod transport.ConnectionMethod, dashboardInfo *DashboardInfo) {
 	version := "v1.0.0" // You could make this dynamic
 	transportStr := connectionMethod.String()
-	
+
 	if writeURL := controller.WriteURL(); writeURL != nil {
 		if dashboardInfo != nil {
 			fmt.Printf(`
