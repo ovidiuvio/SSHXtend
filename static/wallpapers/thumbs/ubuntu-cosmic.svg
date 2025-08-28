@@ -1,0 +1,36 @@
+<svg width="200" height="120" viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="cosmicBase" cx="30%" cy="40%" r="120%">
+      <stop offset="0%" stop-color="#FF6B35"/>
+      <stop offset="25%" stop-color="#E95420"/>
+      <stop offset="50%" stop-color="#772953"/>
+      <stop offset="70%" stop-color="#2E1B69"/>
+      <stop offset="85%" stop-color="#1A0F3A"/>
+      <stop offset="100%" stop-color="#0A0511"/>
+    </radialGradient>
+    <radialGradient id="nebula1" cx="70%" cy="20%" r="60%">
+      <stop offset="0%" stop-color="#FF8C42" stop-opacity="0.6"/>
+      <stop offset="30%" stop-color="#772953" stop-opacity="0.4"/>
+      <stop offset="60%" stop-color="#2E1B69" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="stars" x="0" y="0" width="50" height="50" patternUnits="userSpaceOnUse">
+      <rect width="50" height="50" fill="transparent"/>
+      <circle cx="12" cy="15" r="0.4" fill="#FFFFFF" opacity="0.8"/>
+      <circle cx="38" cy="8" r="0.3" fill="#FFD700" opacity="0.9"/>
+      <circle cx="25" cy="35" r="0.2" fill="#FFFFFF" opacity="0.7"/>
+      <circle cx="45" cy="42" r="0.3" fill="#FF8C42" opacity="0.6"/>
+    </pattern>
+  </defs>
+  
+  <rect width="200" height="120" fill="url(#cosmicBase)"/>
+  <rect width="200" height="120" fill="url(#nebula1)"/>
+  <rect width="200" height="120" fill="url(#stars)"/>
+  
+  <g opacity="0.8">
+    <circle cx="150" cy="20" r="2" fill="#FFD700"/>
+    <circle cx="30" cy="80" r="1.5" fill="#FF6B35"/>
+    <circle cx="170" cy="70" r="1" fill="#FFFFFF"/>
+    <circle cx="10" cy="30" r="1.2" fill="#FF8C42"/>
+  </g>
+</svg>

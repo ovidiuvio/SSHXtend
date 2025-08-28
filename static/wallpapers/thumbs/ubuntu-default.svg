@@ -1,0 +1,15 @@
+<svg width="200" height="120" viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="ubuntuGradient" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FF6B35"/>
+      <stop offset="30%" stop-color="#E95420"/>
+      <stop offset="70%" stop-color="#2C001E"/>
+      <stop offset="100%" stop-color="#1A0011"/>
+    </radialGradient>
+  </defs>
+  <rect width="200" height="120" fill="url(#ubuntuGradient)"/>
+  <g opacity="0.1">
+    <circle cx="170" cy="20" r="40" fill="#FFFFFF"/>
+    <circle cx="30" cy="80" r="30" fill="#FFFFFF"/>
+  </g>
+</svg>

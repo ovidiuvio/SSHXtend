@@ -1,0 +1,40 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="solarizedGradient" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#fdf6e3"/>
+      <stop offset="30%" stop-color="#eee8d5"/>
+      <stop offset="70%" stop-color="#93a1a1"/>
+      <stop offset="100%" stop-color="#839496"/>
+    </radialGradient>
+    <pattern id="solarizedTexture" patternUnits="userSpaceOnUse" width="4" height="4">
+      <rect width="4" height="4" fill="#fdf6e3"/>
+      <circle cx="2" cy="2" r="0.5" fill="#cb4b16" opacity="0.08"/>
+    </pattern>
+    <radialGradient id="vignette" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#93a1a1" stop-opacity="0.15"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#solarizedGradient)"/>
+  <!-- Texture overlay -->
+  <rect width="1920" height="1080" fill="url(#solarizedTexture)" opacity="0.4"/>
+  <!-- Ubuntu abstract geometric pattern -->
+  <g opacity="0.25">
+    <circle cx="1600" cy="200" r="400" fill="#cb4b16"/>
+    <circle cx="300" cy="800" r="300" fill="#cb4b16"/>
+    <polygon points="960,100 1100,300 820,300" fill="#cb4b16"/>
+  </g>
+  <!-- Additional geometric accents -->
+  <g opacity="0.15">
+    <circle cx="1200" cy="600" r="200" fill="#d33682"/>
+    <rect x="100" y="400" width="150" height="150" rx="20" fill="#268bd2"/>
+    <polygon points="1500,800 1650,950 1350,950" fill="#859900"/>
+  </g>
+  <!-- Subtle highlights -->
+  <g opacity="0.1">
+    <ellipse cx="960" cy="540" rx="300" ry="100" fill="#ffffff"/>
+    <circle cx="1400" cy="400" r="80" fill="#ffffff"/>
+  </g>
+  <!-- Vignette effect -->
+  <rect width="1920" height="1080" fill="url(#vignette)"/>
+</svg>

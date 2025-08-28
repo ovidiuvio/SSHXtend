@@ -1,0 +1,60 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Main sunrise gradient -->
+    <radialGradient id="sunriseGradient" cx="75%" cy="85%" r="120%">
+      <stop offset="0%" stop-color="#FFD700"/>
+      <stop offset="20%" stop-color="#FF8C42"/>
+      <stop offset="40%" stop-color="#FF6B35"/>
+      <stop offset="60%" stop-color="#E95420"/>
+      <stop offset="80%" stop-color="#C7410A"/>
+      <stop offset="100%" stop-color="#2C001E"/>
+    </radialGradient>
+    
+    <!-- Overlay gradient for depth -->
+    <linearGradient id="overlayGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF6B35" stop-opacity="0.3"/>
+      <stop offset="50%" stop-color="#E95420" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#2C001E" stop-opacity="0.4"/>
+    </linearGradient>
+    
+    <!-- Subtle texture gradient -->
+    <radialGradient id="textureGradient" cx="30%" cy="20%" r="80%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.15"/>
+      <stop offset="30%" stop-color="#FFD700" stop-opacity="0.08"/>
+      <stop offset="60%" stop-color="#FF6B35" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.02"/>
+    </radialGradient>
+  </defs>
+  
+  <!-- Base gradient -->
+  <rect width="1920" height="1080" fill="url(#sunriseGradient)"/>
+  
+  <!-- Overlay for depth -->
+  <rect width="1920" height="1080" fill="url(#overlayGradient)"/>
+  
+  <!-- Subtle geometric elements -->
+  <g opacity="0.12">
+    <!-- Large geometric shapes for visual interest -->
+    <circle cx="1600" cy="150" r="350" fill="#FFFFFF"/>
+    <ellipse cx="200" cy="900" rx="400" ry="200" fill="#FFFFFF"/>
+    <polygon points="960,50 1150,350 770,350" fill="#FFFFFF"/>
+    
+    <!-- Smaller accent elements -->
+    <circle cx="1400" cy="600" r="80" fill="#FFD700"/>
+    <circle cx="400" cy="200" r="60" fill="#FF8C42"/>
+    <circle cx="1700" cy="800" r="45" fill="#FFFFFF"/>
+  </g>
+  
+  <!-- Texture overlay -->
+  <rect width="1920" height="1080" fill="url(#textureGradient)"/>
+  
+  <!-- Final subtle vignette -->
+  <defs>
+    <radialGradient id="vignette" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="70%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.15"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#vignette)"/>
+</svg>

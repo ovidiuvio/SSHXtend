@@ -1,0 +1,45 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="catppuccinGradient" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#313244"/>
+      <stop offset="40%" stop-color="#1e1e2e"/>
+      <stop offset="70%" stop-color="#181825"/>
+      <stop offset="100%" stop-color="#11111b"/>
+    </radialGradient>
+    <!-- Subtle texture overlay -->
+    <filter id="noise">
+      <feTurbulence baseFrequency="0.9" numOctaves="3" result="noise"/>
+      <feColorMatrix in="noise" type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncA type="discrete" tableValues="0.02 0.04 0.06"/>
+      </feComponentTransfer>
+      <feComposite in2="SourceGraphic" operator="multiply"/>
+    </filter>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#catppuccinGradient)"/>
+  <!-- Grid pattern -->
+  <defs>
+    <pattern id="catppuccinGrid" width="100" height="100" patternUnits="userSpaceOnUse">
+      <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#cba6f7" stroke-width="0.4" opacity="0.15"/>
+      <path d="M 50 0 L 50 100 M 0 50 L 100 50" fill="none" stroke="#cba6f7" stroke-width="0.2" opacity="0.08"/>
+    </pattern>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#catppuccinGrid)"/>
+  <!-- Accent dots and elements -->
+  <g opacity="0.7">
+    <circle cx="1400" cy="250" r="3" fill="#f5c2e7"/>
+    <circle cx="500" cy="750" r="3" fill="#cba6f7"/>
+    <circle cx="1200" cy="650" r="3" fill="#f5c2e7"/>
+    <circle cx="300" cy="400" r="2" fill="#cba6f7"/>
+    <circle cx="1600" cy="800" r="2" fill="#f5c2e7"/>
+  </g>
+  <!-- Corner accents -->
+  <g opacity="0.4">
+    <rect x="0" y="0" width="120" height="2" fill="#cba6f7"/>
+    <rect x="0" y="0" width="2" height="120" fill="#cba6f7"/>
+    <rect x="1798" y="1078" width="120" height="2" fill="#f5c2e7"/>
+    <rect x="1918" y="958" width="2" height="120" fill="#f5c2e7"/>
+  </g>
+  <!-- Texture overlay -->
+  <rect width="1920" height="1080" fill="url(#catppuccinGradient)" filter="url(#noise)" opacity="0.3"/>
+</svg>

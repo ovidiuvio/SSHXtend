@@ -1,0 +1,41 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="tokyoGradient" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#7aa2f7"/>
+      <stop offset="30%" stop-color="#5a7db8"/>
+      <stop offset="70%" stop-color="#24283b"/>
+      <stop offset="100%" stop-color="#1a1b26"/>
+    </radialGradient>
+    <pattern id="tokyoTexture" patternUnits="userSpaceOnUse" width="4" height="4">
+      <rect width="4" height="4" fill="#1a1b26"/>
+      <circle cx="2" cy="2" r="0.5" fill="#7dcfff" opacity="0.1"/>
+    </pattern>
+    <radialGradient id="vignette" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.4"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#tokyoGradient)"/>
+  <!-- Texture overlay -->
+  <rect width="1920" height="1080" fill="url(#tokyoTexture)" opacity="0.3"/>
+  <!-- Ubuntu abstract geometric pattern -->
+  <g opacity="0.2">
+    <circle cx="1600" cy="200" r="400" fill="#7dcfff"/>
+    <circle cx="300" cy="800" r="300" fill="#7dcfff"/>
+    <polygon points="960,100 1100,300 820,300" fill="#7dcfff"/>
+  </g>
+  <!-- Additional geometric accents -->
+  <g opacity="0.12">
+    <circle cx="1200" cy="600" r="200" fill="#bb9af7"/>
+    <rect x="100" y="400" width="150" height="150" rx="20" fill="#9ece6a"/>
+    <polygon points="1500,800 1650,950 1350,950" fill="#f7768e"/>
+  </g>
+  <!-- Electric blue highlights -->
+  <g opacity="0.08">
+    <ellipse cx="960" cy="540" rx="300" ry="100" fill="#2ac3de"/>
+    <circle cx="1400" cy="400" r="80" fill="#2ac3de"/>
+    <rect x="50" y="50" width="100" height="20" rx="10" fill="#2ac3de"/>
+  </g>
+  <!-- Vignette effect -->
+  <rect width="1920" height="1080" fill="url(#vignette)"/>
+</svg>

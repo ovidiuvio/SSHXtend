@@ -37,6 +37,7 @@ export const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
 
 export type CopyFormat = "html" | "ansi" | "txt" | "markdown";
 export type DownloadBehavior = "modal" | "html" | "ansi" | "txt" | "markdown" | "zip";
+export type WallpaperFit = "cover" | "contain" | "fill" | "tile" | "center";
 
 export type Settings = {
   name: string;
@@ -73,6 +74,11 @@ export type Settings = {
   aiContextLength: number; // Maximum context length in tokens
   aiAutoCompress: boolean; // Auto-compress when reaching 90% of context
   aiMaxResponseTokens: number; // Maximum tokens in AI response
+  // Wallpaper settings
+  wallpaperEnabled: boolean;
+  wallpaperCurrent: string; // wallpaper id
+  wallpaperFit: WallpaperFit;
+  wallpaperOpacity: number; // 0.1 to 1.0
 };
 
 const storedSettings = persisted<Partial<Settings>>("sshx-settings-store", {});
@@ -243,6 +249,26 @@ export const settings: Readable<Settings> = derived(
       aiMaxResponseTokens = 4096; // Default to 4K tokens for response
     }
 
+    let wallpaperEnabled = $storedSettings.wallpaperEnabled;
+    if (typeof wallpaperEnabled !== "boolean") {
+      wallpaperEnabled = true;
+    }
+
+    let wallpaperCurrent = $storedSettings.wallpaperCurrent;
+    if (typeof wallpaperCurrent !== "string") {
+      wallpaperCurrent = "none";
+    }
+
+    let wallpaperFit = $storedSettings.wallpaperFit;
+    if (!wallpaperFit || !["cover", "contain", "fill", "tile", "center"].includes(wallpaperFit)) {
+      wallpaperFit = "cover";
+    }
+
+    let wallpaperOpacity = $storedSettings.wallpaperOpacity;
+    if (typeof wallpaperOpacity !== "number" || wallpaperOpacity < 0.1 || wallpaperOpacity > 1.0) {
+      wallpaperOpacity = 1.0;
+    }
+
     return {
       name,
       theme,
@@ -272,6 +298,10 @@ export const settings: Readable<Settings> = derived(
       aiContextLength,
       aiAutoCompress,
       aiMaxResponseTokens,
+      wallpaperEnabled,
+      wallpaperCurrent,
+      wallpaperFit,
+      wallpaperOpacity,
     };
   },
 );

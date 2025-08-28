@@ -1,0 +1,15 @@
+<svg width="200" height="120" viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="draculaGradient" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#ff79c6"/>
+      <stop offset="30%" stop-color="#bd93f9"/>
+      <stop offset="70%" stop-color="#44475a"/>
+      <stop offset="100%" stop-color="#282a36"/>
+    </radialGradient>
+  </defs>
+  <rect width="200" height="120" fill="url(#draculaGradient)"/>
+  <g opacity="0.15">
+    <circle cx="170" cy="20" r="40" fill="#ff79c6"/>
+    <circle cx="30" cy="80" r="30" fill="#ff79c6"/>
+  </g>
+</svg>

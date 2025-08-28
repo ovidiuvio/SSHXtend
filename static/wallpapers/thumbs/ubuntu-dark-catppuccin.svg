@@ -1,0 +1,22 @@
+<svg width="200" height="120" viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="catppuccinGradient" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#313244"/>
+      <stop offset="40%" stop-color="#1e1e2e"/>
+      <stop offset="70%" stop-color="#181825"/>
+      <stop offset="100%" stop-color="#11111b"/>
+    </radialGradient>
+  </defs>
+  <rect width="200" height="120" fill="url(#catppuccinGradient)"/>
+  <defs>
+    <pattern id="catppuccinGrid" width="10" height="10" patternUnits="userSpaceOnUse">
+      <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#cba6f7" stroke-width="0.4" opacity="0.15"/>
+    </pattern>
+  </defs>
+  <rect width="200" height="120" fill="url(#catppuccinGrid)"/>
+  <g opacity="0.7">
+    <circle cx="140" cy="25" r="1" fill="#f5c2e7"/>
+    <circle cx="50" cy="75" r="1" fill="#cba6f7"/>
+    <circle cx="120" cy="65" r="1" fill="#f5c2e7"/>
+  </g>
+</svg>

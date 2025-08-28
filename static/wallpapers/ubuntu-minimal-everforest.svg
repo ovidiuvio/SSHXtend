@@ -1,0 +1,87 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Everforest base gradient: Soft green to forest -->
+    <linearGradient id="everforestBase" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2d353b"/>
+      <stop offset="30%" stop-color="#343f44"/>
+      <stop offset="70%" stop-color="#425047"/>
+      <stop offset="100%" stop-color="#4f5b58"/>
+    </linearGradient>
+    
+    <!-- Everforest accent gradient: Forest green to yellow -->
+    <linearGradient id="everforestAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#83c092" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#a7c080" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#dbbc7f" stop-opacity="0.4"/>
+    </linearGradient>
+    
+    <!-- Subtle geometric pattern -->
+    <pattern id="geometricGrid" x="0" y="0" width="120" height="120" patternUnits="userSpaceOnUse">
+      <rect width="120" height="120" fill="transparent"/>
+      <rect x="0" y="0" width="1" height="120" fill="#83c092" opacity="0.03"/>
+      <rect x="0" y="0" width="120" height="1" fill="#83c092" opacity="0.03"/>
+      <circle cx="60" cy="60" r="0.5" fill="#83c092" opacity="0.08"/>
+    </pattern>
+    
+    <!-- Elegant dot pattern -->
+    <pattern id="elegantDots" x="0" y="0" width="60" height="60" patternUnits="userSpaceOnUse">
+      <rect width="60" height="60" fill="transparent"/>
+      <circle cx="30" cy="30" r="0.8" fill="#a7c080" opacity="0.06"/>
+    </pattern>
+    
+    <!-- Subtle glow -->
+    <filter id="subtleGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Base gradient -->
+  <rect width="1920" height="1080" fill="url(#everforestBase)"/>
+  
+  <!-- Subtle geometric grid -->
+  <rect width="1920" height="1080" fill="url(#geometricGrid)"/>
+  
+  <!-- Elegant dot overlay -->
+  <rect width="1920" height="1080" fill="url(#elegantDots)"/>
+  
+  <!-- Clean geometric shapes with Everforest colors -->
+  <g opacity="0.08" filter="url(#subtleGlow)">
+    <!-- Large geometric elements -->
+    <rect x="1400" y="100" width="400" height="2" fill="url(#everforestAccent)"/>
+    <rect x="1400" y="100" width="2" height="400" fill="url(#everforestAccent)"/>
+    
+    <circle cx="300" cy="800" r="150" stroke="url(#everforestAccent)" stroke-width="1" fill="none"/>
+    <circle cx="300" cy="800" r="100" stroke="url(#everforestAccent)" stroke-width="0.5" fill="none"/>
+    
+    <!-- Minimal triangular elements -->
+    <polygon points="1600,300 1700,450 1500,450" stroke="url(#everforestAccent)" stroke-width="1" fill="none"/>
+    <polygon points="200,200 280,300 120,300" stroke="url(#everforestAccent)" stroke-width="0.8" fill="none"/>
+    
+    <!-- Subtle connecting lines -->
+    <line x1="300" y1="650" x2="1600" y2="300" stroke="url(#everforestAccent)" stroke-width="0.5"/>
+    <line x1="150" y1="250" x2="1450" y2="150" stroke="url(#everforestAccent)" stroke-width="0.3"/>
+  </g>
+  
+  <!-- Ultra-minimal accent elements -->
+  <g opacity="0.12">
+    <rect x="100" y="100" width="8" height="8" fill="#83c092"/>
+    <rect x="1800" y="900" width="6" height="6" fill="#dbbc7f"/>
+    <circle cx="1600" cy="200" r="3" fill="#a7c080"/>
+    <circle cx="400" cy="950" r="2" fill="#dbbc7f"/>
+  </g>
+  
+  <!-- Subtle corner accents -->
+  <g opacity="0.04">
+    <path d="M0,0 L200,0 L200,2 L2,2 L2,200 L0,200 Z" fill="url(#everforestAccent)"/>
+    <path d="M1920,0 L1720,0 L1720,2 L1918,2 L1918,200 L1920,200 Z" fill="url(#everforestAccent)"/>
+    <path d="M0,1080 L200,1080 L200,1078 L2,1078 L2,880 L0,880 Z" fill="url(#everforestAccent)"/>
+    <path d="M1920,1080 L1720,1080 L1720,1078 L1918,1078 L1918,880 L1920,880 Z" fill="url(#everforestAccent)"/>
+  </g>
+  
+  <!-- Ultra-subtle texture overlay -->
+  <rect width="1920" height="1080" fill="url(#everforestAccent)" opacity="0.01"/>
+</svg>

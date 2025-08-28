@@ -1,0 +1,22 @@
+<svg width="200" height="120" viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="materialGradient" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#424242"/>
+      <stop offset="40%" stop-color="#212121"/>
+      <stop offset="70%" stop-color="#1a1a1a"/>
+      <stop offset="100%" stop-color="#0d0d0d"/>
+    </radialGradient>
+  </defs>
+  <rect width="200" height="120" fill="url(#materialGradient)"/>
+  <defs>
+    <pattern id="materialGrid" width="10" height="10" patternUnits="userSpaceOnUse">
+      <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#2196f3" stroke-width="0.4" opacity="0.25"/>
+    </pattern>
+  </defs>
+  <rect width="200" height="120" fill="url(#materialGrid)"/>
+  <g opacity="0.8">
+    <circle cx="140" cy="25" r="1" fill="#00bcd4"/>
+    <circle cx="50" cy="75" r="1" fill="#2196f3"/>
+    <circle cx="120" cy="65" r="1" fill="#00bcd4"/>
+  </g>
+</svg>

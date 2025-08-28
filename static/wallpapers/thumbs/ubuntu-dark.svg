@@ -1,0 +1,20 @@
+<svg width="200" height="120" viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="darkGradient" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#2C2C2C"/>
+      <stop offset="70%" stop-color="#1A1A1A"/>
+      <stop offset="100%" stop-color="#0D0D0D"/>
+    </radialGradient>
+  </defs>
+  <rect width="200" height="120" fill="url(#darkGradient)"/>
+  <defs>
+    <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
+      <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#333333" stroke-width="0.5" opacity="0.3"/>
+    </pattern>
+  </defs>
+  <rect width="200" height="120" fill="url(#grid)"/>
+  <g opacity="0.6">
+    <circle cx="140" cy="25" r="1" fill="#E95420"/>
+    <circle cx="50" cy="75" r="1" fill="#E95420"/>
+  </g>
+</svg>

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ChevronDownIcon, MonitorIcon, TypeIcon, CopyIcon, UserIcon, EyeIcon, EyeOffIcon } from "svelte-feather-icons";
   import SparklesIcon from "./icons/SparklesIcon.svelte";
+  import WallpaperSettings from "./WallpaperSettings.svelte";
 
   import { settings, updateSettings, type UITheme, type ToolbarPosition, type AIProvider, type CopyFormat, type DownloadBehavior, MODEL_CONTEXT_WINDOWS } from "$lib/settings";
   import OverlayMenu from "./OverlayMenu.svelte";
@@ -213,6 +214,11 @@
             <option value="right">Right</option>
           </select>
         </div>
+      </div>
+      
+      <!-- Wallpaper Settings -->
+      <div class="mt-6">
+        <WallpaperSettings />
       </div>
     {:else if activeTab === "terminal"}
       <!-- Terminal Tab -->

@@ -1,0 +1,17 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="ubuntuGradient" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FF6B35"/>
+      <stop offset="30%" stop-color="#E95420"/>
+      <stop offset="70%" stop-color="#2C001E"/>
+      <stop offset="100%" stop-color="#1A0011"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#ubuntuGradient)"/>
+  <!-- Ubuntu abstract geometric pattern -->
+  <g opacity="0.1">
+    <circle cx="1600" cy="200" r="400" fill="#FFFFFF"/>
+    <circle cx="300" cy="800" r="300" fill="#FFFFFF"/>
+    <polygon points="960,100 1100,300 820,300" fill="#FFFFFF"/>
+  </g>
+</svg>

@@ -1,0 +1,45 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="gruvboxGradient" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#fe8019"/>
+      <stop offset="30%" stop-color="#d65d0e"/>
+      <stop offset="70%" stop-color="#3c3836"/>
+      <stop offset="100%" stop-color="#282828"/>
+    </radialGradient>
+    <pattern id="gruvboxTexture" patternUnits="userSpaceOnUse" width="4" height="4">
+      <rect width="4" height="4" fill="#282828"/>
+      <circle cx="2" cy="2" r="0.5" fill="#fabd2f" opacity="0.12"/>
+    </pattern>
+    <radialGradient id="vignette" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.3"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#gruvboxGradient)"/>
+  <!-- Texture overlay -->
+  <rect width="1920" height="1080" fill="url(#gruvboxTexture)" opacity="0.4"/>
+  <!-- Ubuntu abstract geometric pattern -->
+  <g opacity="0.22">
+    <circle cx="1600" cy="200" r="400" fill="#fabd2f"/>
+    <circle cx="300" cy="800" r="300" fill="#fabd2f"/>
+    <polygon points="960,100 1100,300 820,300" fill="#fabd2f"/>
+  </g>
+  <!-- Additional geometric accents -->
+  <g opacity="0.14">
+    <circle cx="1200" cy="600" r="200" fill="#b16286"/>
+    <rect x="100" y="400" width="150" height="150" rx="20" fill="#98971a"/>
+    <polygon points="1500,800 1650,950 1350,950" fill="#689d6a"/>
+  </g>
+  <!-- Warm highlights -->
+  <g opacity="0.1">
+    <ellipse cx="960" cy="540" rx="300" ry="100" fill="#ebdbb2"/>
+    <circle cx="1400" cy="400" r="80" fill="#ebdbb2"/>
+    <rect x="50" y="200" width="120" height="30" rx="15" fill="#cc241d"/>
+  </g>
+  <!-- Paper texture effect -->
+  <g opacity="0.05">
+    <rect x="0" y="0" width="1920" height="1080" fill="#fbf1c7" style="mix-blend-mode: overlay;"/>
+  </g>
+  <!-- Vignette effect -->
+  <rect width="1920" height="1080" fill="url(#vignette)"/>
+</svg>

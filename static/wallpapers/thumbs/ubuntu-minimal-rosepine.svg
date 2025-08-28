@@ -1,0 +1,47 @@
+<svg width="200" height="120" viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="rosepineBase" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#191724"/>
+      <stop offset="30%" stop-color="#1f1d2e"/>
+      <stop offset="70%" stop-color="#26233a"/>
+      <stop offset="100%" stop-color="#2a273f"/>
+    </linearGradient>
+    <linearGradient id="rosepineAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ebbcba" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#eb6f92" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#f6c177" stop-opacity="0.4"/>
+    </linearGradient>
+    <pattern id="geometricGrid" x="0" y="0" width="30" height="30" patternUnits="userSpaceOnUse">
+      <rect width="30" height="30" fill="transparent"/>
+      <rect x="0" y="0" width="0.5" height="30" fill="#ebbcba" opacity="0.03"/>
+      <rect x="0" y="0" width="30" height="0.5" fill="#ebbcba" opacity="0.03"/>
+      <circle cx="15" cy="15" r="0.3" fill="#ebbcba" opacity="0.08"/>
+    </pattern>
+    <pattern id="elegantDots" x="0" y="0" width="15" height="15" patternUnits="userSpaceOnUse">
+      <rect width="15" height="15" fill="transparent"/>
+      <circle cx="7.5" cy="7.5" r="0.2" fill="#eb6f92" opacity="0.06"/>
+    </pattern>
+  </defs>
+  
+  <rect width="200" height="120" fill="url(#rosepineBase)"/>
+  <rect width="200" height="120" fill="url(#geometricGrid)"/>
+  <rect width="200" height="120" fill="url(#elegantDots)"/>
+  
+  <g opacity="0.08">
+    <rect x="140" y="10" width="40" height="1" fill="url(#rosepineAccent)"/>
+    <rect x="140" y="10" width="1" height="40" fill="url(#rosepineAccent)"/>
+    
+    <circle cx="30" cy="80" r="15" stroke="url(#rosepineAccent)" stroke-width="0.5" fill="none"/>
+    <circle cx="30" cy="80" r="10" stroke="url(#rosepineAccent)" stroke-width="0.3" fill="none"/>
+    
+    <polygon points="160,30 170,45 150,45" stroke="url(#rosepineAccent)" stroke-width="0.5" fill="none"/>
+    <polygon points="20,20 28,30 12,30" stroke="url(#rosepineAccent)" stroke-width="0.4" fill="none"/>
+  </g>
+  
+  <g opacity="0.12">
+    <rect x="10" y="10" width="2" height="2" fill="#ebbcba"/>
+    <rect x="180" y="90" width="1.5" height="1.5" fill="#f6c177"/>
+    <circle cx="160" cy="20" r="0.8" fill="#eb6f92"/>
+    <circle cx="40" cy="95" r="0.5" fill="#f6c177"/>
+  </g>
+</svg>

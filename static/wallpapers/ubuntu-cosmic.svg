@@ -1,0 +1,93 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Cosmic base gradient -->
+    <radialGradient id="cosmicBase" cx="30%" cy="40%" r="120%">
+      <stop offset="0%" stop-color="#FF6B35"/>
+      <stop offset="25%" stop-color="#E95420"/>
+      <stop offset="50%" stop-color="#772953"/>
+      <stop offset="70%" stop-color="#2E1B69"/>
+      <stop offset="85%" stop-color="#1A0F3A"/>
+      <stop offset="100%" stop-color="#0A0511"/>
+    </radialGradient>
+    
+    <!-- Nebula gradient -->
+    <radialGradient id="nebula1" cx="70%" cy="20%" r="60%">
+      <stop offset="0%" stop-color="#FF8C42" stop-opacity="0.6"/>
+      <stop offset="30%" stop-color="#772953" stop-opacity="0.4"/>
+      <stop offset="60%" stop-color="#2E1B69" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    
+    <radialGradient id="nebula2" cx="15%" cy="80%" r="50%">
+      <stop offset="0%" stop-color="#E95420" stop-opacity="0.5"/>
+      <stop offset="40%" stop-color="#552746" stop-opacity="0.3"/>
+      <stop offset="80%" stop-color="#1A0F3A" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    
+    <!-- Star field pattern -->
+    <pattern id="stars" x="0" y="0" width="200" height="200" patternUnits="userSpaceOnUse">
+      <rect width="200" height="200" fill="transparent"/>
+      <circle cx="23" cy="45" r="0.8" fill="#FFFFFF" opacity="0.8"/>
+      <circle cx="156" cy="12" r="0.5" fill="#FFD700" opacity="0.9"/>
+      <circle cx="89" cy="78" r="0.3" fill="#FFFFFF" opacity="0.7"/>
+      <circle cx="167" cy="134" r="0.6" fill="#FF8C42" opacity="0.6"/>
+      <circle cx="34" cy="189" r="0.4" fill="#FFFFFF" opacity="0.8"/>
+      <circle cx="123" cy="167" r="0.5" fill="#FFFFFF" opacity="0.7"/>
+      <circle cx="78" cy="23" r="0.3" fill="#FFD700" opacity="0.9"/>
+      <circle cx="145" cy="89" r="0.7" fill="#FFFFFF" opacity="0.6"/>
+      <circle cx="12" cy="134" r="0.4" fill="#FFFFFF" opacity="0.8"/>
+      <circle cx="189" cy="67" r="0.6" fill="#FF8C42" opacity="0.7"/>
+    </pattern>
+    
+    <!-- Cosmic dust gradient -->
+    <linearGradient id="cosmicDust" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#772953" stop-opacity="0.2"/>
+      <stop offset="30%" stop-color="#E95420" stop-opacity="0.1"/>
+      <stop offset="60%" stop-color="#2E1B69" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#0A0511" stop-opacity="0.3"/>
+    </linearGradient>
+    
+    <!-- Glow effects -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Base cosmic background -->
+  <rect width="1920" height="1080" fill="url(#cosmicBase)"/>
+  
+  <!-- Nebula layers -->
+  <rect width="1920" height="1080" fill="url(#nebula1)"/>
+  <rect width="1920" height="1080" fill="url(#nebula2)"/>
+  
+  <!-- Star field -->
+  <rect width="1920" height="1080" fill="url(#stars)"/>
+  
+  <!-- Cosmic dust overlay -->
+  <rect width="1920" height="1080" fill="url(#cosmicDust)"/>
+  
+  <!-- Bright cosmic objects with glow -->
+  <g opacity="0.8" filter="url(#glow)">
+    <circle cx="1500" cy="200" r="8" fill="#FFD700"/>
+    <circle cx="300" cy="800" r="6" fill="#FF6B35"/>
+    <circle cx="1700" cy="700" r="4" fill="#FFFFFF"/>
+    <circle cx="100" cy="300" r="5" fill="#FF8C42"/>
+    <circle cx="800" cy="150" r="3" fill="#FFFFFF"/>
+    <circle cx="1200" cy="900" r="7" fill="#E95420"/>
+  </g>
+  
+  <!-- Subtle cosmic streams -->
+  <g opacity="0.08">
+    <path d="M0,400 Q400,200 800,400 T1600,350 Q1800,320 1920,340" 
+          stroke="#FFFFFF" stroke-width="2" fill="none"/>
+    <path d="M0,700 Q300,600 600,650 T1200,680 Q1500,690 1920,720" 
+          stroke="#FF6B35" stroke-width="1.5" fill="none"/>
+    <path d="M0,200 Q600,100 1200,250 T1920,200" 
+          stroke="#FFD700" stroke-width="1" fill="none"/>
+  </g>
+</svg>

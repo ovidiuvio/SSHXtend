@@ -1,0 +1,22 @@
+<svg width="200" height="120" viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="onedarkGradient" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#3c4043"/>
+      <stop offset="40%" stop-color="#282c34"/>
+      <stop offset="70%" stop-color="#21252b"/>
+      <stop offset="100%" stop-color="#181a1f"/>
+    </radialGradient>
+  </defs>
+  <rect width="200" height="120" fill="url(#onedarkGradient)"/>
+  <defs>
+    <pattern id="onedarkGrid" width="10" height="10" patternUnits="userSpaceOnUse">
+      <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#c678dd" stroke-width="0.4" opacity="0.18"/>
+    </pattern>
+  </defs>
+  <rect width="200" height="120" fill="url(#onedarkGrid)"/>
+  <g opacity="0.8">
+    <circle cx="140" cy="25" r="1" fill="#56b6c2"/>
+    <circle cx="50" cy="75" r="1" fill="#c678dd"/>
+    <circle cx="120" cy="65" r="1" fill="#56b6c2"/>
+  </g>
+</svg>

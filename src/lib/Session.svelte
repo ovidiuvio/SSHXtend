@@ -29,6 +29,7 @@
   import { TouchZoom, INITIAL_ZOOM } from "./action/touchZoom";
   import { arrangeNewTerminal, autoArrangeTerminals } from "./arrange";
   import { settings, type ToolbarPosition, updateSettings } from "./settings";
+  import { wallpaperManager } from "./wallpaper";
 
   export let id: string;
 
@@ -70,6 +71,16 @@
   
   
   $: toolbarPosition = $settings.toolbarPosition;
+  
+  // Wallpaper state
+  $: currentWallpaper = wallpaperManager.getWallpaper($settings.wallpaperCurrent);
+  $: wallpaperStyle = wallpaperManager.generateBackgroundStyle(
+    $settings.wallpaperEnabled ? currentWallpaper : null,
+    $settings.wallpaperFit,
+    $settings.wallpaperOpacity,
+    zoom,
+    center
+  );
   
   // Force toolbar visible when connection issues
   $: if (!connected || exitReason) {
@@ -736,15 +747,12 @@
   <ChooseName />
 
   <!--
-    Dotted circle background appears underneath the rest of the elements, but
+    Wallpaper or dotted pattern background appears underneath the rest of the elements,
     moves and zooms with the fabric of the canvas.
   -->
   <div
-    class="absolute inset-0 -z-10 bg-theme-bg"
-    style:background-image="radial-gradient(rgb(var(--color-border)) {zoom}px,
-    transparent 0)"
-    style:background-size="{24 * zoom}px {24 * zoom}px"
-    style:background-position="{-zoom * center[0]}px {-zoom * center[1]}px"
+    class="absolute inset-0 -z-10"
+    style="{wallpaperStyle}"
   />
 
   <!-- User list -->
