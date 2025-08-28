@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChevronDownIcon, MonitorIcon, TypeIcon, CopyIcon, UserIcon, EyeIcon, EyeOffIcon, DownloadIcon, UploadIcon } from "svelte-feather-icons";
+  import { ChevronDownIcon, MonitorIcon, TypeIcon, CopyIcon, UserIcon, EyeIcon, EyeOffIcon, DownloadIcon, UploadIcon, RefreshCwIcon } from "svelte-feather-icons";
   import SparklesIcon from "./icons/SparklesIcon.svelte";
   import WallpaperSettings from "./WallpaperSettings.svelte";
 
@@ -52,6 +52,7 @@
   // Profile import/export state
   let exportingProfile = false;
   let importingProfile = false;
+  let resettingSettings = false;
   let importFileInput: HTMLInputElement;
 
   const fontOptions = [
@@ -223,6 +224,71 @@
     }
   }
 
+  async function handleResetSettings() {
+    resettingSettings = true;
+    
+    try {
+      // Clear all settings to trigger defaults
+      updateSettings({
+        name: "",
+        theme: "default",
+        uiTheme: "auto",
+        scrollback: 5000,
+        fontFamily: '"Fira Code VF", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        fontSize: 14,
+        fontWeight: 400,
+        fontWeightBold: 700,
+        toolbarPosition: "top",
+        zoomLevel: 1,
+        copyOnSelect: false,
+        middleClickPaste: true,
+        copyButtonEnabled: true,
+        copyButtonFormat: "ansi",
+        downloadButtonEnabled: true,
+        downloadButtonBehavior: "modal",
+        screenshotButtonEnabled: true,
+        aiEnabled: false,
+        aiProvider: "gemini",
+        geminiApiKey: "",
+        aiModel: "gemini-2.5-flash",
+        aiModels: [],
+        openRouterApiKey: "",
+        openRouterModel: "anthropic/claude-3.5-sonnet",
+        openRouterModels: [],
+        aiContextLength: 32000,
+        aiAutoCompress: true,
+        aiMaxResponseTokens: 4000,
+        wallpaperEnabled: false,
+        wallpaperCurrent: "ubuntu-default",
+        wallpaperFit: "cover",
+        wallpaperOpacity: 1.0,
+        titlebarSeparator: "none",
+        titlebarSeparatorColor: "#374151",
+        titlebarColor: "#1f2937",
+        titlebarColorEnabled: false,
+        terminalsBarEnabled: false,
+        terminalsBarPosition: "bottom",
+        idleDisconnectEnabled: false,
+      });
+
+      // Reset input fields
+      inputName = "";
+
+      makeToast({
+        kind: "success",
+        message: "Settings reset to defaults",
+      });
+    } catch (error) {
+      console.error("Failed to reset settings:", error);
+      makeToast({
+        kind: "error",
+        message: "Failed to reset settings",
+      });
+    } finally {
+      resettingSettings = false;
+    }
+  }
+
 </script>
 
 <OverlayMenu
@@ -273,8 +339,8 @@
       <!-- Profile Import/Export Section -->
       <div class="mt-6">
         <div class="mb-4">
-          <h3 class="text-lg font-medium text-theme-fg-primary mb-2">Profile Backup</h3>
-          <p class="text-sm text-theme-fg-muted">Export your settings and wallpapers to a file, or import from a backup.</p>
+          <h3 class="text-lg font-medium text-theme-fg-primary mb-2">Profile Management</h3>
+          <p class="text-sm text-theme-fg-muted">Export your settings to a file, import from a backup, or reset to defaults.</p>
         </div>
 
         <div class="flex gap-2">
@@ -305,6 +371,21 @@
             {:else}
               <UploadIcon class="w-4 h-4" />
               Import
+            {/if}
+          </button>
+
+          <!-- Reset Button -->
+          <button
+            class="export-import-btn reset-btn"
+            on:click={handleResetSettings}
+            disabled={resettingSettings}
+          >
+            {#if resettingSettings}
+              <div class="w-4 h-4 border-2 border-theme-accent border-t-transparent rounded-full animate-spin"></div>
+              Resetting...
+            {:else}
+              <RefreshCwIcon class="w-4 h-4" />
+              Reset
             {/if}
           </button>
         </div>
@@ -1280,5 +1361,9 @@
     @apply border border-theme-border;
     @apply text-theme-fg hover:text-theme-accent;
     @apply transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .reset-btn {
+    @apply hover:border-red-500 hover:text-red-500;
   }
 </style>
