@@ -1,11 +1,13 @@
 <script lang="ts">
-  import { ChevronDownIcon, MonitorIcon, TypeIcon, CopyIcon, UserIcon, EyeIcon, EyeOffIcon } from "svelte-feather-icons";
+  import { ChevronDownIcon, MonitorIcon, TypeIcon, CopyIcon, UserIcon, EyeIcon, EyeOffIcon, DownloadIcon, UploadIcon } from "svelte-feather-icons";
   import SparklesIcon from "./icons/SparklesIcon.svelte";
   import WallpaperSettings from "./WallpaperSettings.svelte";
 
   import { settings, updateSettings, type UITheme, type ToolbarPosition, type TerminalsBarPosition, type AIProvider, type CopyFormat, type DownloadBehavior, type TitlebarSeparator, MODEL_CONTEXT_WINDOWS } from "$lib/settings";
   import OverlayMenu from "./OverlayMenu.svelte";
   import themes, { type ThemeName } from "./themes";
+  import { profileManager } from "$lib/profileManager";
+  import { makeToast } from "$lib/toast";
 
   export let open: boolean;
 
@@ -46,6 +48,11 @@
   let newModelName = "";
   let showGeminiApiKey = false;
   let showOpenRouterApiKey = false;
+
+  // Profile import/export state
+  let exportingProfile = false;
+  let importingProfile = false;
+  let importFileInput: HTMLInputElement;
 
   const fontOptions = [
     {
@@ -140,6 +147,82 @@
     { id: "behavior", label: "Behavior", icon: CopyIcon },
     { id: "ai", label: "AI", icon: SparklesIcon },
   ];
+
+  // Profile import/export handlers
+  async function handleExportProfile() {
+    exportingProfile = true;
+    try {
+      await profileManager.exportProfile();
+      makeToast({
+        kind: "success",
+        message: "Profile exported successfully",
+      });
+    } catch (error) {
+      makeToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Failed to export profile",
+      });
+    } finally {
+      exportingProfile = false;
+    }
+  }
+
+  function handleImportClick() {
+    importFileInput?.click();
+  }
+
+  async function handleImportFileSelect(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    
+    if (!file) return;
+
+    importingProfile = true;
+    
+    try {
+      const content = await file.text();
+      
+      const validation = profileManager.validateImportFile(content);
+      
+      if (!validation.valid) {
+        makeToast({
+          kind: "error",
+          message: `Import failed: ${validation.errors.join(", ")}`,
+        });
+        return;
+      }
+
+      if (validation.warnings.length > 0) {
+        makeToast({
+          kind: "warning",
+          message: `Import completed with warnings: ${validation.warnings.join(", ")}`,
+        });
+      }
+
+      const importOptions = {
+        includeSettings: true,
+        includeWallpapers: true,
+        overwriteExistingWallpapers: false,
+      };
+
+      await profileManager.importProfile(content, importOptions);
+      
+      makeToast({
+        kind: "success",
+        message: "Profile imported successfully",
+      });
+    } catch (error) {
+      console.error("Failed to import profile:", error);
+      makeToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Failed to import profile",
+      });
+    } finally {
+      importingProfile = false;
+      if (input) input.value = "";
+    }
+  }
+
 </script>
 
 <OverlayMenu
@@ -184,6 +267,61 @@
               }
             }}
           />
+        </div>
+      </div>
+
+      <!-- Profile Import/Export Section -->
+      <div class="mt-6">
+        <div class="mb-4">
+          <h3 class="text-lg font-medium text-theme-fg-primary mb-2">Profile Backup</h3>
+          <p class="text-sm text-theme-fg-muted">Export your settings and wallpapers to a file, or import from a backup.</p>
+        </div>
+
+        <div class="flex gap-2">
+          <!-- Export Button -->
+          <button
+            class="export-import-btn"
+            on:click={handleExportProfile}
+            disabled={exportingProfile}
+          >
+            {#if exportingProfile}
+              <div class="w-4 h-4 border-2 border-theme-accent border-t-transparent rounded-full animate-spin"></div>
+              Exporting...
+            {:else}
+              <DownloadIcon class="w-4 h-4" />
+              Export
+            {/if}
+          </button>
+
+          <!-- Import Button -->
+          <button
+            class="export-import-btn"
+            on:click={handleImportClick}
+            disabled={importingProfile}
+          >
+            {#if importingProfile}
+              <div class="w-4 h-4 border-2 border-theme-accent border-t-transparent rounded-full animate-spin"></div>
+              Importing...
+            {:else}
+              <UploadIcon class="w-4 h-4" />
+              Import
+            {/if}
+          </button>
+        </div>
+
+        <!-- Export Info -->
+        <div class="mt-4 p-3 bg-theme-bg-tertiary/25 rounded-lg">
+          <p class="text-sm text-theme-fg-muted mb-1">
+            <strong>Export includes:</strong>
+          </p>
+          <ul class="text-xs text-theme-fg-muted space-y-0.5 ml-4">
+            <li>• All settings (theme, fonts, behavior, AI configuration)</li>
+            <li>• Custom wallpapers and wallpaper settings</li>
+            <li>• Toolbar and UI customizations</li>
+          </ul>
+          <p class="text-xs text-theme-fg-muted mt-2 italic">
+            API keys are not included for security reasons.
+          </p>
         </div>
       </div>
     {:else if activeTab === "appearance"}
@@ -1056,6 +1194,17 @@
   </p>
 </OverlayMenu>
 
+<!-- Hidden File Input for Profile Import -->
+<input
+  type="file"
+  bind:this={importFileInput}
+  on:change={handleImportFileSelect}
+  accept=".json,application/json"
+  class="hidden"
+/>
+
+
+
 <style lang="postcss">
   .item {
     @apply bg-theme-bg-tertiary/25 rounded-lg p-4 flex gap-4 flex-col sm:flex-row items-start;
@@ -1122,5 +1271,14 @@
 
   input:focus + .slider {
     @apply ring-2 ring-theme-accent/50;
+  }
+
+  /* Export/Import Button Styles */
+  .export-import-btn {
+    @apply flex items-center gap-2 px-3 py-1.5 text-sm rounded;
+    @apply bg-theme-bg-secondary hover:bg-theme-bg-tertiary;
+    @apply border border-theme-border;
+    @apply text-theme-fg hover:text-theme-accent;
+    @apply transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
 </style>
