@@ -9,9 +9,25 @@ export type Toast = {
   message: string;
   action?: string;
   onAction?: () => void;
+  persistent?: boolean; // If true, toast doesn't auto-expire
 };
 
 export function makeToast(toast: Toast, duration = 3000) {
-  const obj = Object.assign({ expires: Date.now() + duration }, toast);
+  const expires = toast.persistent ? Infinity : Date.now() + duration;
+  const obj = Object.assign({ expires }, toast);
   toastStore.update(($toasts) => [...$toasts, obj]);
+}
+
+/** Manually dismiss a persistent toast by message content */
+export function dismissToast(message: string) {
+  toastStore.update(($toasts) => 
+    $toasts.filter(toast => toast.message !== message)
+  );
+}
+
+/** Dismiss all persistent toasts */
+export function dismissPersistentToasts() {
+  toastStore.update(($toasts) => 
+    $toasts.filter(toast => !toast.persistent)
+  );
 }

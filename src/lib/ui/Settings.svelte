@@ -20,6 +20,7 @@
   let inputToolbarPosition: ToolbarPosition;
   let inputTerminalsBarEnabled: boolean;
   let inputTerminalsBarPosition: TerminalsBarPosition;
+  let inputIdleDisconnectEnabled: boolean;
   let inputCopyOnSelect: boolean;
   let inputMiddleClickPaste: boolean;
   let inputCopyButtonEnabled: boolean;
@@ -104,6 +105,7 @@
     inputToolbarPosition = $settings.toolbarPosition;
     inputTerminalsBarEnabled = $settings.terminalsBarEnabled;
     inputTerminalsBarPosition = $settings.terminalsBarPosition;
+    inputIdleDisconnectEnabled = $settings.idleDisconnectEnabled;
     inputCopyOnSelect = $settings.copyOnSelect;
     inputMiddleClickPaste = $settings.middleClickPaste;
     inputCopyButtonEnabled = $settings.copyButtonEnabled;
@@ -506,6 +508,24 @@
       </div>
     {:else if activeTab === "behavior"}
       <!-- Behavior Tab -->
+      <div class="item">
+        <div>
+          <p class="item-title">Auto-Disconnect When Idle</p>
+          <p class="item-subtitle">
+            Automatically disconnect the WebSocket connection when inactive to save bandwidth. Timeout: <strong>3 minutes</strong> (single user) or <strong>10 minutes</strong> (multiple users). Reconnects automatically when you resume activity.
+          </p>
+        </div>
+        <div>
+          <label class="switch">
+            <input
+              type="checkbox"
+              bind:checked={inputIdleDisconnectEnabled}
+              on:change={() => updateSettings({ idleDisconnectEnabled: inputIdleDisconnectEnabled })}
+            />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
       <div class="item">
         <div>
           <p class="item-title">Copy on Select</p>

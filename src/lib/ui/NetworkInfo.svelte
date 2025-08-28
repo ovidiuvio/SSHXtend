@@ -1,7 +1,8 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
 
-  export let status: "connected" | "no-server" | "no-shell";
+  export let status: "connected" | "no-server" | "no-shell" | "idle-disconnected";
+  export let idleTimeout: number | null = null; // Current idle timeout in milliseconds
 
   export let serverLatency: number | null;
   export let shellLatency: number | null;
@@ -52,6 +53,14 @@
       {:else}
         Total latency: {displayLatency(serverLatency + shellLatency)}
       {/if}
+    {:else if status === "idle-disconnected"}
+      Disconnected due to inactivity to save bandwidth.
+      <br><span class="text-xs text-theme-fg-secondary mt-1 block">
+        {#if idleTimeout}
+          Timeout: {idleTimeout >= 60000 ? `${Math.round(idleTimeout / 60000)} min` : `${Math.round(idleTimeout / 1000)} sec`}.
+        {/if}
+        Move mouse or press a key to reconnect.
+      </span>
     {:else}
       You are currently disconnected.
     {/if}
@@ -60,9 +69,9 @@
   <div class="flex justify-between items-center mt-6">
     <div class="ball filled" />
     <div class="border-t-2 border-dashed border-theme-border-secondary w-32" />
-    <div class="ball" class:filled={status !== "no-server"} />
-    <div class="border-t-2 border-dashed border-theme-border-secondary w-32" />
-    <div class="ball" class:filled={status === "connected"} />
+    <div class="ball" class:filled={status !== "no-server" && status !== "idle-disconnected"} />
+    <div class="border-t-2 border-dashed border-theme-border-secondary w-32" class:opacity-50={status === "idle-disconnected"} />
+    <div class="ball" class:filled={status === "connected"} class:idle={status === "idle-disconnected"} />
   </div>
 
   <div class="flex justify-between items-center mt-2.5">
@@ -101,5 +110,15 @@
 
   .ball:not(.filled) {
     @apply border-2 border-theme-border-secondary;
+  }
+
+  .ball.idle {
+    @apply border-2 border-yellow-400 bg-yellow-400/20;
+    animation: pulse-idle 2s infinite;
+  }
+
+  @keyframes pulse-idle {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
   }
 </style>

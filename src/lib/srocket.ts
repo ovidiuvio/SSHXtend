@@ -36,6 +36,7 @@ export class Srocket<T, U> {
   #connected: boolean;
   #buffer: Uint8Array[];
   #disposed: boolean;
+  #idleDisconnected: boolean;
 
   constructor(url: string, options: SrocketOptions<T>) {
     this.#url = url;
@@ -52,11 +53,16 @@ export class Srocket<T, U> {
     this.#connected = false;
     this.#buffer = [];
     this.#disposed = false;
+    this.#idleDisconnected = false;
     this.#reconnect();
   }
 
   get connected() {
     return this.#connected;
+  }
+
+  get idleDisconnected() {
+    return this.#idleDisconnected;
   }
 
   /** Queue a message to send to the server, with "at-most-once" semantics. */
@@ -74,6 +80,26 @@ export class Srocket<T, U> {
     }
   }
 
+  /** Disconnect the WebSocket for idle detection. */
+  disconnect() {
+    if (this.#disposed) return;
+    this.#idleDisconnected = true;
+    this.#stateChange(false);
+    this.#ws?.close();
+  }
+
+  /** Reconnect the WebSocket when resuming from idle. */
+  reconnect() {
+    if (this.#disposed) return;
+    if (this.#idleDisconnected) {
+      this.#idleDisconnected = false;
+      // Only reconnect if not already connected/connecting
+      if (!this.#ws) {
+        this.#reconnect();
+      }
+    }
+  }
+
   /** Dispose of this WebSocket permanently. */
   dispose() {
     this.#stateChange(false);
@@ -82,7 +108,7 @@ export class Srocket<T, U> {
   }
 
   #reconnect() {
-    if (this.#disposed) return;
+    if (this.#disposed || this.#idleDisconnected) return;
     if (this.#ws !== null) {
       throw new Error("invariant violation: reconnecting while connected");
     }
@@ -95,7 +121,10 @@ export class Srocket<T, U> {
       this.#options.onClose?.(event);
       this.#ws = null;
       this.#stateChange(false);
-      setTimeout(() => this.#reconnect(), RECONNECT_DELAY);
+      // Only auto-reconnect if not idle disconnected
+      if (!this.#idleDisconnected) {
+        setTimeout(() => this.#reconnect(), RECONNECT_DELAY);
+      }
     };
     this.#ws.onmessage = (event) => {
       if (event.data instanceof ArrayBuffer) {

@@ -89,6 +89,8 @@ export type Settings = {
   // Terminals bar settings
   terminalsBarEnabled: boolean;
   terminalsBarPosition: TerminalsBarPosition;
+  // Network settings
+  idleDisconnectEnabled: boolean; // Auto-disconnect when idle to save bandwidth
 };
 
 const storedSettings = persisted<Partial<Settings>>("sshx-settings-store", {});
@@ -309,6 +311,10 @@ export const settings: Readable<Settings> = derived(
       terminalsBarPosition = "bottom";
     }
 
+    let idleDisconnectEnabled = $storedSettings.idleDisconnectEnabled;
+    if (typeof idleDisconnectEnabled !== "boolean") {
+      idleDisconnectEnabled = true; // Default enabled as requested
+    }
 
     return {
       name,
@@ -349,6 +355,7 @@ export const settings: Readable<Settings> = derived(
       titlebarColorEnabled,
       terminalsBarEnabled,
       terminalsBarPosition,
+      idleDisconnectEnabled,
     };
   },
 );

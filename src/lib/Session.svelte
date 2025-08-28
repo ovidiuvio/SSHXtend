@@ -14,7 +14,8 @@
   import { createLock } from "./lock";
   import { Srocket } from "./srocket";
   import type { WsClient, WsServer, WsUser, WsWinsize } from "./protocol";
-  import { makeToast } from "./toast";
+  import { makeToast, dismissToast } from "./toast";
+  import { createIdleManager, isIdle, isIdleDisconnected, type IdleDetectionManager } from "./idleDetection";
   import Chat, { type ChatMessage } from "./ui/Chat.svelte";
   import ChooseName from "./ui/ChooseName.svelte";
   import NameList from "./ui/NameList.svelte";
@@ -183,9 +184,12 @@
 
   let encrypt: Encrypt;
   let srocket: Srocket<WsServer, WsClient> | null = null;
+  let idleManager: IdleDetectionManager | null = null;
 
   let connected = false;
   let exitReason: string | null = null;
+  let isReconnecting = false;
+  let idleToastShown = false;
 
   /** Bound "write" method for each terminal. */
   const writers: Record<number, (data: string) => void> = {};
@@ -282,12 +286,16 @@
           });
         } else if (message.users) {
           users = message.users;
+          // Update idle timeout when user list changes
+          idleManager?.setIdleTimeout(users.length);
         } else if (message.userDiff) {
           const [id, update] = message.userDiff;
           users = users.filter(([uid]) => uid !== id);
           if (update !== null) {
             users = [...users, [id, update]];
           }
+          // Update idle timeout when user count changes
+          idleManager?.setIdleTimeout(users.length);
         } else if (message.shells) {
           shells = message.shells;
           if (movingIsDone) {
@@ -323,6 +331,10 @@
           srocket?.send({ setName: $settings.name });
         }
         connected = true;
+        isReconnecting = false;
+        
+        // Record activity when connection is established
+        idleManager?.recordActivity();
       },
 
       onDisconnect() {
@@ -331,6 +343,16 @@
         users = [];
         serverLatencies = [];
         shellLatencies = [];
+        
+        // Show persistent toast notification if disconnected due to idle
+        if ($isIdleDisconnected && !isReconnecting && !idleToastShown) {
+          idleToastShown = true;
+          makeToast({
+            kind: "info",
+            message: "Session paused due to inactivity to save bandwidth. Resume activity to reconnect.",
+            persistent: true
+          });
+        }
       },
 
       onClose(event) {
@@ -341,9 +363,50 @@
         }
       },
     });
+    
+    // Setup idle detection manager
+    idleManager = createIdleManager(
+      // On idle callback
+      () => {
+        if ($settings.idleDisconnectEnabled && srocket && !srocket.idleDisconnected) {
+          srocket.disconnect();
+        }
+      },
+      // On active callback  
+      () => {
+        if ($settings.idleDisconnectEnabled && srocket && srocket.idleDisconnected) {
+          // Dismiss the persistent idle notification
+          if (idleToastShown) {
+            dismissToast("Session paused due to inactivity to save bandwidth. Resume activity to reconnect.");
+            idleToastShown = false;
+          }
+          
+          isReconnecting = true;
+          srocket.reconnect();
+          makeToast({
+            kind: "success",
+            message: "Reconnecting session...",
+          });
+        }
+      },
+      $settings.idleDisconnectEnabled
+    );
   });
 
-  onDestroy(() => srocket?.dispose());
+  // React to idle disconnect setting changes
+  $: if (idleManager) {
+    idleManager.setEnabled($settings.idleDisconnectEnabled);
+  }
+
+  // React to user count changes for dynamic idle timeout
+  $: if (idleManager && users) {
+    idleManager.setIdleTimeout(users.length);
+  }
+
+  onDestroy(() => {
+    srocket?.dispose();
+    idleManager?.dispose();
+  });
 
   // Send periodic ping messages for latency estimation.
   onMount(() => {
@@ -411,6 +474,9 @@
     const encrypted = await encrypt.segment(0x200000000n, offset, data);
     srocket?.send({ data: [id, encrypted, offset] });
     
+    // Record user activity for idle detection
+    idleManager?.recordActivity();
+    
     // Track terminal activity and trigger immediate thumbnail update
     terminalActivity[id] = Date.now();
     // Schedule throttled thumbnail update for terminals bar  
@@ -444,6 +510,9 @@
     }, 80);
 
     function handleMouse(event: MouseEvent) {
+      // Record activity for idle detection
+      idleManager?.recordActivity();
+      
       if (moving !== -1 && !movingIsDone) {
         const [x, y] = normalizePosition(event);
         movingSize = {
@@ -894,11 +963,14 @@
         class:translate-y-[116.5px]={toolbarPosition === "left" || toolbarPosition === "right"}
       >
         <NetworkInfo
-          status={connected
+          status={$isIdleDisconnected && !connected
+            ? "idle-disconnected"
+            : connected
             ? "connected"
             : exitReason
             ? "no-shell"
             : "no-server"}
+          idleTimeout={idleManager?.currentTimeout}
           serverLatency={integerMedian(serverLatencies)}
           shellLatency={integerMedian(shellLatencies)}
         />
