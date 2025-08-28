@@ -3,7 +3,7 @@
   import SparklesIcon from "./icons/SparklesIcon.svelte";
   import WallpaperSettings from "./WallpaperSettings.svelte";
 
-  import { settings, updateSettings, type UITheme, type ToolbarPosition, type AIProvider, type CopyFormat, type DownloadBehavior, MODEL_CONTEXT_WINDOWS } from "$lib/settings";
+  import { settings, updateSettings, type UITheme, type ToolbarPosition, type AIProvider, type CopyFormat, type DownloadBehavior, type TitlebarSeparator, MODEL_CONTEXT_WINDOWS } from "$lib/settings";
   import OverlayMenu from "./OverlayMenu.svelte";
   import themes, { type ThemeName } from "./themes";
 
@@ -36,6 +36,10 @@
   let inputAIContextLength: number;
   let inputAIAutoCompress: boolean;
   let inputAIMaxResponseTokens: number;
+  let inputTitlebarSeparator: TitlebarSeparator;
+  let inputTitlebarSeparatorColor: string;
+  let inputTitlebarColor: string;
+  let inputTitlebarColorEnabled: boolean;
   let newModelName = "";
   let showGeminiApiKey = false;
   let showOpenRouterApiKey = false;
@@ -114,6 +118,10 @@
     inputAIContextLength = $settings.aiContextLength;
     inputAIAutoCompress = $settings.aiAutoCompress;
     inputAIMaxResponseTokens = $settings.aiMaxResponseTokens;
+    inputTitlebarSeparator = $settings.titlebarSeparator;
+    inputTitlebarSeparatorColor = $settings.titlebarSeparatorColor;
+    inputTitlebarColor = $settings.titlebarColor;
+    inputTitlebarColorEnabled = $settings.titlebarColorEnabled;
   }
 
   type Tab = "profile" | "appearance" | "terminal" | "behavior" | "ai";
@@ -220,6 +228,7 @@
       <div class="mt-6">
         <WallpaperSettings />
       </div>
+
     {:else if activeTab === "terminal"}
       <!-- Terminal Tab -->
       <div class="item">
@@ -355,6 +364,86 @@
             step="100"
           />
         </div>
+      </div>
+
+      <!-- Titlebar Settings -->
+      <div class="mt-6">
+        <div class="mb-4">
+          <h3 class="text-lg font-medium text-theme-fg-primary mb-2">Titlebar</h3>
+          <p class="text-sm text-theme-fg-muted">Customize the terminal titlebar appearance.</p>
+        </div>
+
+        <div class="item">
+          <div>
+            <p class="item-title">Custom Titlebar Color</p>
+            <p class="item-subtitle">Enable custom background color for the terminal titlebar.</p>
+          </div>
+          <div>
+            <label class="switch">
+              <input
+                type="checkbox"
+                bind:checked={inputTitlebarColorEnabled}
+                on:change={() => updateSettings({ titlebarColorEnabled: inputTitlebarColorEnabled })}
+              />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        {#if inputTitlebarColorEnabled}
+          <div class="item">
+            <div>
+              <p class="item-title">Titlebar Background Color</p>
+              <p class="item-subtitle">Background color for the terminal titlebar.</p>
+            </div>
+            <div>
+              <input
+                type="color"
+                class="w-16 h-10 rounded border border-theme-border cursor-pointer"
+                bind:value={inputTitlebarColor}
+                on:input={() => updateSettings({ titlebarColor: inputTitlebarColor })}
+              />
+            </div>
+          </div>
+        {/if}
+
+        <div class="item">
+          <div>
+            <p class="item-title">Titlebar Separator</p>
+            <p class="item-subtitle">Add a separator line between titlebar and terminal content.</p>
+          </div>
+          <div class="relative">
+            <ChevronDownIcon
+              class="absolute top-[11px] right-2.5 w-4 h-4 text-theme-fg-muted"
+            />
+            <select
+              class="input-common !pr-5"
+              bind:value={inputTitlebarSeparator}
+              on:change={() => updateSettings({ titlebarSeparator: inputTitlebarSeparator })}
+            >
+              <option value="none">None</option>
+              <option value="line">Line</option>
+              <option value="subtle">Subtle</option>
+            </select>
+          </div>
+        </div>
+
+        {#if inputTitlebarSeparator !== "none"}
+          <div class="item">
+            <div>
+              <p class="item-title">Separator Color</p>
+              <p class="item-subtitle">Color of the separator line.</p>
+            </div>
+            <div>
+              <input
+                type="color"
+                class="w-16 h-10 rounded border border-theme-border cursor-pointer"
+                bind:value={inputTitlebarSeparatorColor}
+                on:input={() => updateSettings({ titlebarSeparatorColor: inputTitlebarSeparatorColor })}
+              />
+            </div>
+          </div>
+        {/if}
       </div>
     {:else if activeTab === "behavior"}
       <!-- Behavior Tab -->

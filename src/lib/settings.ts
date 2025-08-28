@@ -38,6 +38,7 @@ export const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
 export type CopyFormat = "html" | "ansi" | "txt" | "markdown";
 export type DownloadBehavior = "modal" | "html" | "ansi" | "txt" | "markdown" | "zip";
 export type WallpaperFit = "cover" | "contain" | "fill" | "tile" | "center";
+export type TitlebarSeparator = "none" | "line" | "subtle";
 
 export type Settings = {
   name: string;
@@ -79,6 +80,11 @@ export type Settings = {
   wallpaperCurrent: string; // wallpaper id
   wallpaperFit: WallpaperFit;
   wallpaperOpacity: number; // 0.1 to 1.0
+  // Titlebar settings
+  titlebarSeparator: TitlebarSeparator;
+  titlebarSeparatorColor: string; // hex color for separator
+  titlebarColor: string; // hex color for titlebar background
+  titlebarColorEnabled: boolean; // whether to use custom titlebar color
 };
 
 const storedSettings = persisted<Partial<Settings>>("sshx-settings-store", {});
@@ -269,6 +275,26 @@ export const settings: Readable<Settings> = derived(
       wallpaperOpacity = 1.0;
     }
 
+    let titlebarSeparator = $storedSettings.titlebarSeparator;
+    if (!titlebarSeparator || !["none", "line", "subtle"].includes(titlebarSeparator)) {
+      titlebarSeparator = "none";
+    }
+
+    let titlebarSeparatorColor = $storedSettings.titlebarSeparatorColor;
+    if (typeof titlebarSeparatorColor !== "string" || titlebarSeparatorColor === "") {
+      titlebarSeparatorColor = "#464f60"; // Default subtle gray
+    }
+
+    let titlebarColor = $storedSettings.titlebarColor;
+    if (typeof titlebarColor !== "string" || titlebarColor === "") {
+      titlebarColor = "#2d3748"; // Default dark gray
+    }
+
+    let titlebarColorEnabled = $storedSettings.titlebarColorEnabled;
+    if (typeof titlebarColorEnabled !== "boolean") {
+      titlebarColorEnabled = false; // Default disabled (transparent)
+    }
+
     return {
       name,
       theme,
@@ -302,6 +328,10 @@ export const settings: Readable<Settings> = derived(
       wallpaperCurrent,
       wallpaperFit,
       wallpaperOpacity,
+      titlebarSeparator,
+      titlebarSeparatorColor,
+      titlebarColor,
+      titlebarColorEnabled,
     };
   },
 );

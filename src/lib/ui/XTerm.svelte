@@ -45,6 +45,7 @@
   import themes from "./themes";
   import CircleButton from "./CircleButton.svelte";
   import CircleButtons from "./CircleButtons.svelte";
+  import TitlebarSeparator from "./TitlebarSeparator.svelte";
   import { settings, type CopyFormat, type DownloadBehavior } from "$lib/settings";
   import { TypeAheadAddon } from "$lib/typeahead";
   import { geminiService } from "$lib/gemini";
@@ -1768,11 +1769,13 @@ ${fullContext}`;
   class="term-container"
   class:focused
   style:background={theme.background}
+  style:border-color={$settings.titlebarColorEnabled ? $settings.titlebarColor : ''}
   on:mousedown={() => dispatch("bringToFront")}
   on:pointerdown={(event) => event.stopPropagation()}
 >
   <div
     class="flex select-none"
+    style="background-color: {$settings.titlebarColorEnabled ? $settings.titlebarColor : ''}; border-radius: 0.5rem 0.5rem 0 0; margin: -1px -1px 0 -1px; padding: 1px 1px 0 1px;"
     on:mousedown={(event) => dispatch("startMove", event)}
   >
     <div class="flex-1 flex items-center px-3">
@@ -1966,6 +1969,10 @@ ${fullContext}`;
       {/if}
     </div>
   </div>
+  <TitlebarSeparator 
+    type={$settings.titlebarSeparator}
+    color={$settings.titlebarSeparatorColor}
+  />
   <div
     class="inline-block px-4 py-2 transition-opacity duration-500"
     bind:this={termEl}
