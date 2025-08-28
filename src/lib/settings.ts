@@ -5,6 +5,7 @@ import { browser } from "$app/environment";
 
 export type UITheme = "light" | "dark" | "auto";
 export type ToolbarPosition = "top" | "bottom" | "left" | "right";
+export type TerminalsBarPosition = "top" | "bottom" | "left" | "right";
 
 export type AIProvider = "gemini" | "openrouter";
 
@@ -85,6 +86,9 @@ export type Settings = {
   titlebarSeparatorColor: string; // hex color for separator
   titlebarColor: string; // hex color for titlebar background
   titlebarColorEnabled: boolean; // whether to use custom titlebar color
+  // Terminals bar settings
+  terminalsBarEnabled: boolean;
+  terminalsBarPosition: TerminalsBarPosition;
 };
 
 const storedSettings = persisted<Partial<Settings>>("sshx-settings-store", {});
@@ -295,6 +299,17 @@ export const settings: Readable<Settings> = derived(
       titlebarColorEnabled = false; // Default disabled (transparent)
     }
 
+    let terminalsBarEnabled = $storedSettings.terminalsBarEnabled;
+    if (typeof terminalsBarEnabled !== "boolean") {
+      terminalsBarEnabled = false; // Default disabled (auto-hide for performance)
+    }
+
+    let terminalsBarPosition = $storedSettings.terminalsBarPosition;
+    if (!terminalsBarPosition || !["top", "bottom", "left", "right"].includes(terminalsBarPosition)) {
+      terminalsBarPosition = "bottom";
+    }
+
+
     return {
       name,
       theme,
@@ -332,6 +347,8 @@ export const settings: Readable<Settings> = derived(
       titlebarSeparatorColor,
       titlebarColor,
       titlebarColorEnabled,
+      terminalsBarEnabled,
+      terminalsBarPosition,
     };
   },
 );

@@ -76,6 +76,7 @@
   export let write: (data: string) => void; // bound function prop
   export let getThumbnail: () => Promise<string | null> = async () => null; // bound function prop
   export let getThumbnails: () => Promise<{small: string | null, large: string | null}> = async () => ({small: null, large: null}); // bound function prop
+  export let getThumbnailForBar: () => Promise<string | null> = async () => null; // bound function prop for terminals bar
 
   export let termEl: HTMLDivElement = null as any; // suppress "missing prop" warning
   let term: Terminal | null = null;
@@ -493,7 +494,6 @@ ${fullContext}`;
     }
 
     try {
-      console.log('🖼️ Starting high-resolution screenshot capture...');
       
       // Force terminal to refresh before capture
       if (term) {
@@ -907,8 +907,6 @@ ${fullContext}`;
   getThumbnail = async () => {
     if (!term || !termEl) return null;
     
-    console.log('🖼️ Starting terminal thumbnail capture...');
-    
     try {
       // Force terminal to refresh/render before capture
       if (term) {
@@ -950,7 +948,6 @@ ${fullContext}`;
         const canvasType = isWebGL ? 'WebGL' : '2D';
         const canvasDesc = `${canvasType} (${canvasEl.className || 'unnamed'})`;
         
-        console.log(`🖼️ Attempting ${canvasDesc} capture...`);
         
         try {
           let thumbnail: string | null = null;
@@ -1000,8 +997,6 @@ ${fullContext}`;
   
   getThumbnails = async () => {
     if (!term || !termEl) return {small: null, large: null};
-    
-    console.log('🖼️ Creating multiple thumbnail sizes...');
     
     try {
       // Get the best quality source
@@ -1073,6 +1068,86 @@ ${fullContext}`;
       };
     }
   };
+
+  getThumbnailForBar = async () => {
+    if (!term || !termEl) return null;
+    
+    try {
+      // Find best canvas source (optimized - no data URL creation)
+      const canvasElements = Array.from(termEl.querySelectorAll('canvas')).map(canvas => {
+        const canvasEl = canvas as HTMLCanvasElement;
+        const isWebGL = canvasEl.getContext('webgl') || canvasEl.getContext('webgl2');
+        const hasData = !isCanvasBlank(canvasEl);
+        return {
+          canvas: canvasEl,
+          isWebGL,
+          hasData,
+          priority: isWebGL && hasData ? 1 : hasData ? 2 : isWebGL ? 3 : 4
+        };
+      }).sort((a, b) => a.priority - b.priority);
+      
+      let sourceCanvas: HTMLCanvasElement | null = null;
+      for (const {canvas: canvasEl, hasData} of canvasElements) {
+        if (hasData && !isCanvasBlank(canvasEl)) {
+          sourceCanvas = canvasEl;
+          break;
+        }
+      }
+      
+      if (!sourceCanvas) {
+        // Fallback to text-based
+        return createTextBasedPreview();
+      }
+      
+      // Direct canvas-to-canvas scaling (async to prevent main thread blocking)
+      return await createOptimizedThumbnail(sourceCanvas, 320, 192);
+      
+    } catch (error) {
+      console.warn('Failed to create terminal bar thumbnail:', error);
+      return createTextBasedPreview();
+    }
+  };
+
+  // Optimized direct canvas-to-canvas thumbnail creation (async to prevent main thread blocking)
+  async function createOptimizedThumbnail(sourceCanvas: HTMLCanvasElement, targetWidth: number, targetHeight: number): Promise<string | null> {
+    try {
+      // Create target canvas at exact size needed (no device pixel ratio scaling for thumbnails)
+      const thumbnailCanvas = document.createElement('canvas');
+      const ctx = thumbnailCanvas.getContext('2d');
+      if (!ctx) return null;
+      
+      thumbnailCanvas.width = targetWidth;
+      thumbnailCanvas.height = targetHeight;
+      
+      // High quality scaling settings
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      
+      // Direct canvas-to-canvas draw with scaling
+      ctx.drawImage(
+        sourceCanvas, 
+        0, 0, sourceCanvas.width, sourceCanvas.height,  // Source dimensions
+        0, 0, targetWidth, targetHeight                   // Target dimensions
+      );
+      
+      // Use async toBlob() instead of synchronous toDataURL() to prevent main thread blocking
+      return new Promise((resolve) => {
+        thumbnailCanvas.toBlob((blob) => {
+          if (blob) {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          } else {
+            resolve(null);
+          }
+        }, 'image/png', 0.8); // Slightly compressed for better performance
+      });
+      
+    } catch (error) {
+      console.warn('Failed to create optimized thumbnail:', error);
+      return null;
+    }
+  }
   
   function createScaledThumbnailFromImage(sourceImg: HTMLImageElement, width: number, height: number): string | null {
     try {

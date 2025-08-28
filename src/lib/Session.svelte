@@ -25,6 +25,7 @@
   import Avatars from "./ui/Avatars.svelte";
   import LiveCursor from "./ui/LiveCursor.svelte";
   import TerminalSelector from "./ui/TerminalSelector.svelte";
+  import TerminalsBar from "./ui/TerminalsBar.svelte";
   import { slide } from "./action/slide";
   import { TouchZoom, INITIAL_ZOOM } from "./action/touchZoom";
   import { arrangeNewTerminal, autoArrangeTerminals } from "./arrange";
@@ -69,8 +70,51 @@
   let toolbarVisible = true;
   let toolbarHoverTimeout: number | null = null;
   
+  // Terminals bar state
+  let terminalsBarVisible = false; // @hmr:keep
+  let terminalsBarPinned = false; // @hmr:keep
+  let terminalsBarHoverTimeout: number | null = null;
+  let terminalsBarUpdateInterval: number | null = null;
   
   $: toolbarPosition = $settings.toolbarPosition;
+  $: terminalsBarEnabled = $settings.terminalsBarEnabled;
+  $: terminalsBarPosition = $settings.terminalsBarPosition;
+  
+  // Manage terminals bar visibility based on enabled state
+  $: {
+    if (!terminalsBarEnabled) {
+      terminalsBarVisible = false;
+    } else if (terminalsBarPinned) {
+      terminalsBarVisible = true;
+      // Capture thumbnails when terminals bar becomes visible
+      if (shells.length > 0) {
+        captureTerminalThumbnails();
+      }
+    }
+    // When enabled but not pinned, it should start hidden and show only on hover
+  }
+
+  // Handle live thumbnail updates when terminals bar is visible
+  $: {
+    if (terminalsBarEnabled && terminalsBarVisible && shells.length > 0) {
+      // Start the smart update system if not already running
+      if (!terminalsBarUpdateInterval) {
+        startSmartThumbnailUpdates();
+        // Do a full refresh when bar becomes visible + catch up on missed updates
+        captureTerminalBarThumbnails();
+        // Process any terminals that needed updates while bar was hidden
+        for (const id of terminalNeedsUpdate) {
+          updateSingleTerminalThumbnail(id);
+        }
+      }
+    } else {
+      // Stop the update interval when not visible
+      if (terminalsBarUpdateInterval) {
+        clearInterval(terminalsBarUpdateInterval);
+        terminalsBarUpdateInterval = null;
+      }
+    }
+  }
   
   // Wallpaper state
   $: currentWallpaper = wallpaperManager.getWallpaper($settings.wallpaperCurrent);
@@ -148,8 +192,18 @@
   const termWrappers: Record<number, HTMLDivElement> = {};
   const termElements: Record<number, HTMLDivElement> = {};
   const terminalTitles: Record<number, string> = {}; // Track terminal titles
-  const terminalThumbnails: Record<number, {small: string | null, large: string | null}> = {}; // Track terminal thumbnails
+  const terminalThumbnails: Record<number, {small: string | null, large: string | null}> = {}; // Track terminal thumbnails  
+  const terminalBarThumbnails: Record<number, string | null> = {}; // Track terminal bar thumbnails (320×192)
   const thumbnailGetters: Record<number, () => Promise<{small: string | null, large: string | null}>> = {}; // Terminal thumbnail getter functions
+  const terminalBarThumbnailGetters: Record<number, () => Promise<string | null>> = {}; // Terminal bar thumbnail getter functions
+  const terminalActivity: Record<number, number> = {}; // Track last activity timestamp for each terminal
+  const terminalThumbnailHashes: Record<number, string> = {}; // Track content hashes to detect changes
+  const terminalUpdateTimeouts: Record<number, number> = {}; // Track pending thumbnail updates
+  const terminalNeedsUpdate: Set<number> = new Set(); // Track which terminals need updates
+  let sharedThumbnailCanvas: HTMLCanvasElement | null = null; // Reuse canvas for performance
+  let activeThumbnailGenerations = 0; // Track concurrent thumbnail operations
+  const MAX_CONCURRENT_THUMBNAILS = 1; // Strict limit to prevent main thread blocking
+  let isUIBusy = false; // Track if terminals are being moved/resized
   const chunknums: Record<number, number> = {};
   const locks: Record<number, any> = {};
   let userId = 0;
@@ -169,6 +223,9 @@
   let resizingOrigin = [0, 0]; // Coordinates of top-left origin when resize started.
   let resizingCell = [0, 0]; // Pixel dimensions of a single terminal cell.
   let resizingSize: WsWinsize; // Last resize message sent.
+
+  // Track UI busy state to prevent thumbnail generation during drag operations
+  $: isUIBusy = moving !== -1 || resizing !== -1;
 
   let chatMessages: ChatMessage[] = [];
   let newMessages = false;
@@ -215,6 +272,12 @@
               );
               seqnum += data.length;
               writers[id](new TextDecoder().decode(buf));
+              // Track terminal activity and trigger immediate thumbnail update
+              terminalActivity[id] = Date.now();
+              // Schedule throttled thumbnail update for terminals bar
+              if (terminalsBarEnabled && terminalsBarVisible) {
+                scheduleThrottledThumbnailUpdate(id);
+              }
             }
           });
         } else if (message.users) {
@@ -347,6 +410,13 @@
     counter += BigInt(data.length); // Must increment before the `await`.
     const encrypted = await encrypt.segment(0x200000000n, offset, data);
     srocket?.send({ data: [id, encrypted, offset] });
+    
+    // Track terminal activity and trigger immediate thumbnail update
+    terminalActivity[id] = Date.now();
+    // Schedule throttled thumbnail update for terminals bar  
+    if (terminalsBarEnabled && terminalsBarVisible) {
+      scheduleThrottledThumbnailUpdate(id);
+    }
   }
 
   // Stupid hack to preserve input focus when terminals are reordered.
@@ -568,6 +638,49 @@
     showTerminalSelector = false;
   }
 
+  // Terminals bar event handlers
+  function handleTerminalsBarSelect(event: CustomEvent<{ id: number, winsize: WsWinsize }>) {
+    handleCenterTerminal(event.detail.id, event.detail.winsize);
+  }
+
+  function handleTerminalsBarTogglePin() {
+    terminalsBarPinned = !terminalsBarPinned;
+    if (terminalsBarPinned) {
+      terminalsBarVisible = true;
+      if (terminalsBarHoverTimeout) {
+        clearTimeout(terminalsBarHoverTimeout);
+        terminalsBarHoverTimeout = null;
+      }
+      // Capture thumbnails immediately when pinning
+      if (shells.length > 0) {
+        captureTerminalThumbnails();
+      }
+    }
+  }
+
+  function handleTerminalsBarMouseEnter() {
+    if (terminalsBarHoverTimeout) {
+      clearTimeout(terminalsBarHoverTimeout);
+      terminalsBarHoverTimeout = null;
+    }
+    terminalsBarVisible = true;
+  }
+
+  function handleTerminalsBarMouseLeave() {
+    if (!terminalsBarPinned) {
+      terminalsBarHoverTimeout = window.setTimeout(() => {
+        terminalsBarVisible = false;
+        terminalsBarHoverTimeout = null;
+      }, 500);
+    }
+  }
+
+  function handleTerminalsBarClose() {
+    if (!terminalsBarPinned) {
+      terminalsBarVisible = false;
+    }
+  }
+
   // Global keyboard shortcuts
   async function handleGlobalKeydown(event: KeyboardEvent) {
     const isMac = navigator.platform.startsWith('Mac');
@@ -589,7 +702,7 @@
   }
 
   async function handleResize() {
-    if (showTerminalSelector) {
+    if (showTerminalSelector || (terminalsBarEnabled && terminalsBarVisible)) {
       await captureTerminalThumbnails();
     }
   }
@@ -601,6 +714,14 @@
       window.removeEventListener('keydown', handleGlobalKeydown);
       window.removeEventListener('resize', handleResize);
     };
+  });
+
+  // Cleanup intervals on component destruction
+  onDestroy(() => {
+    if (terminalsBarUpdateInterval) {
+      clearInterval(terminalsBarUpdateInterval);
+      terminalsBarUpdateInterval = null;
+    }
   });
   // Track terminal title changes
   function handleTerminalTitleChange(id: number, title: string) {
@@ -620,6 +741,87 @@
         }
       }
     }
+  }
+
+  // Capture bar thumbnails for all terminals (for terminals bar)
+  async function captureTerminalBarThumbnails() {
+    for (const [id] of shells) {
+      await updateSingleTerminalThumbnail(id);
+    }
+  }
+
+  // Update thumbnail for a single terminal with concurrency control and non-blocking processing
+  async function updateSingleTerminalThumbnail(id: number, retryCount = 0) {
+    // Critical performance checks - skip if would block main thread
+    if (!terminalsBarEnabled || !terminalsBarVisible || isUIBusy) {
+      terminalNeedsUpdate.add(id);
+      return;
+    }
+
+    // Strict concurrency limit to prevent main thread blocking
+    if (activeThumbnailGenerations >= MAX_CONCURRENT_THUMBNAILS) {
+      terminalNeedsUpdate.add(id);
+      // Schedule retry after current operations complete
+      setTimeout(() => updateSingleTerminalThumbnail(id, retryCount), 50);
+      return;
+    }
+
+    const getter = terminalBarThumbnailGetters[id];
+    if (!getter) return;
+    
+    activeThumbnailGenerations++;
+    
+    try {
+      // Yield to allow other operations (critical for network/pings)
+      await new Promise(resolve => setTimeout(resolve, 0));
+      
+      const thumbnail = await getter();
+      
+      // Yield again after potentially heavy canvas operation
+      await new Promise(resolve => setTimeout(resolve, 0));
+      
+      if (thumbnail) {
+        terminalBarThumbnails[id] = thumbnail;
+        terminalNeedsUpdate.delete(id); // Successfully updated
+      } else if (retryCount < 2) {
+        // Retry failed capture after short delay
+        setTimeout(() => updateSingleTerminalThumbnail(id, retryCount + 1), 100);
+      }
+    } catch (error) {
+      if (retryCount < 2) {
+        // Retry on error after short delay  
+        setTimeout(() => updateSingleTerminalThumbnail(id, retryCount + 1), 100);
+      } else {
+        console.warn(`Failed to capture bar thumbnail for terminal ${id} after retries:`, error);
+        terminalBarThumbnails[id] = null;
+      }
+    } finally {
+      activeThumbnailGenerations--;
+    }
+  }
+
+  // Throttled thumbnail update with recovery for missed updates
+  function scheduleThrottledThumbnailUpdate(id: number) {
+    // Mark terminal as needing update
+    terminalNeedsUpdate.add(id);
+    
+    // Clear any existing timeout for this terminal
+    if (terminalUpdateTimeouts[id]) {
+      clearTimeout(terminalUpdateTimeouts[id]);
+    }
+    
+    // Schedule update with 1 second delay (throttle high-frequency changes)
+    terminalUpdateTimeouts[id] = window.setTimeout(() => {
+      delete terminalUpdateTimeouts[id];
+      updateSingleTerminalThumbnail(id); // Always attempt update, handle visibility inside
+    }, 1000);
+  }
+
+  // No periodic updates needed - thumbnails update immediately on data changes
+  function startSmartThumbnailUpdates() {
+    // All updates happen immediately when terminal data changes
+    // No periodic timer needed
+    terminalsBarUpdateInterval = null;
   }
 </script>
 
@@ -729,6 +931,58 @@
     {/if}
   {/if}
 
+  <!-- Invisible hover zones for showing the terminals bar based on position -->
+  {#if terminalsBarEnabled && !terminalsBarPinned && !terminalsBarVisible}
+    {#if terminalsBarPosition === "top" && terminalsBarPosition !== toolbarPosition}
+      <div
+        class="absolute top-0 inset-x-0 h-8 z-10"
+        on:mouseenter={handleTerminalsBarMouseEnter}
+      />
+    {:else if terminalsBarPosition === "bottom" && terminalsBarPosition !== toolbarPosition}
+      <div
+        class="absolute bottom-0 inset-x-0 h-8 z-10"
+        on:mouseenter={handleTerminalsBarMouseEnter}
+      />
+    {:else if terminalsBarPosition === "left" && terminalsBarPosition !== toolbarPosition}
+      <div
+        class="absolute left-0 inset-y-0 w-8 z-10"
+        on:mouseenter={handleTerminalsBarMouseEnter}
+      />
+    {:else if terminalsBarPosition === "right" && terminalsBarPosition !== toolbarPosition}
+      <div
+        class="absolute right-0 inset-y-0 w-8 z-10"
+        on:mouseenter={handleTerminalsBarMouseEnter}
+      />
+    {:else if terminalsBarPosition === toolbarPosition}
+      <!-- When terminals bar is at same position as toolbar, create offset hover zone -->
+      {#if terminalsBarPosition === "top"}
+        <div
+          class="absolute inset-x-0 h-8 z-10"
+          style="top: 6rem;"
+          on:mouseenter={handleTerminalsBarMouseEnter}
+        />
+      {:else if terminalsBarPosition === "bottom"}
+        <div
+          class="absolute inset-x-0 h-8 z-10"
+          style="bottom: 6rem;"
+          on:mouseenter={handleTerminalsBarMouseEnter}
+        />
+      {:else if terminalsBarPosition === "left"}
+        <div
+          class="absolute inset-y-0 w-8 z-10"
+          style="left: 4rem;"
+          on:mouseenter={handleTerminalsBarMouseEnter}
+        />
+      {:else if terminalsBarPosition === "right"}
+        <div
+          class="absolute inset-y-0 w-8 z-10"
+          style="right: 4rem;"
+          on:mouseenter={handleTerminalsBarMouseEnter}
+        />
+      {/if}
+    {/if}
+  {/if}
+
   {#if showChat}
     <div
       class="absolute flex flex-col justify-end inset-y-4 right-4 w-80 pointer-events-none z-10"
@@ -777,6 +1031,7 @@
           cols={ws.cols}
           bind:write={writers[id]}
           bind:getThumbnails={thumbnailGetters[id]}
+          bind:getThumbnailForBar={terminalBarThumbnailGetters[id]}
           bind:termEl={termElements[id]}
           on:data={({ detail: data }) =>
             hasWriteAccess && handleInput(id, data)}
@@ -874,6 +1129,24 @@
       terminalThumbnails={terminalThumbnails}
       on:select={handleTerminalSelectorSelect}
       on:close={() => showTerminalSelector = false}
+    />
+  {/if}
+
+  <!-- Terminals Bar -->
+  {#if terminalsBarEnabled && terminalsBarVisible}
+    <TerminalsBar
+      {shells}
+      focusedTerminals={focused}
+      {terminalTitles}
+      terminalThumbnails={terminalBarThumbnails}
+      position={terminalsBarPosition}
+      mainToolbarPosition={toolbarPosition}
+      pinned={terminalsBarPinned}
+      visible={terminalsBarVisible}
+      on:select={handleTerminalsBarSelect}
+      on:togglePin={handleTerminalsBarTogglePin}
+      on:mouseenter={handleTerminalsBarMouseEnter}
+      on:mouseleave={handleTerminalsBarMouseLeave}
     />
   {/if}
 </main>

@@ -3,7 +3,7 @@
   import SparklesIcon from "./icons/SparklesIcon.svelte";
   import WallpaperSettings from "./WallpaperSettings.svelte";
 
-  import { settings, updateSettings, type UITheme, type ToolbarPosition, type AIProvider, type CopyFormat, type DownloadBehavior, type TitlebarSeparator, MODEL_CONTEXT_WINDOWS } from "$lib/settings";
+  import { settings, updateSettings, type UITheme, type ToolbarPosition, type TerminalsBarPosition, type AIProvider, type CopyFormat, type DownloadBehavior, type TitlebarSeparator, MODEL_CONTEXT_WINDOWS } from "$lib/settings";
   import OverlayMenu from "./OverlayMenu.svelte";
   import themes, { type ThemeName } from "./themes";
 
@@ -18,6 +18,8 @@
   let inputFontWeight: number;
   let inputFontWeightBold: number;
   let inputToolbarPosition: ToolbarPosition;
+  let inputTerminalsBarEnabled: boolean;
+  let inputTerminalsBarPosition: TerminalsBarPosition;
   let inputCopyOnSelect: boolean;
   let inputMiddleClickPaste: boolean;
   let inputCopyButtonEnabled: boolean;
@@ -100,6 +102,8 @@
     inputFontWeight = $settings.fontWeight;
     inputFontWeightBold = $settings.fontWeightBold;
     inputToolbarPosition = $settings.toolbarPosition;
+    inputTerminalsBarEnabled = $settings.terminalsBarEnabled;
+    inputTerminalsBarPosition = $settings.terminalsBarPosition;
     inputCopyOnSelect = $settings.copyOnSelect;
     inputMiddleClickPaste = $settings.middleClickPaste;
     inputCopyButtonEnabled = $settings.copyButtonEnabled;
@@ -223,6 +227,61 @@
           </select>
         </div>
       </div>
+
+      <!-- Terminals Bar Section -->
+      <div class="item">
+        <div>
+          <p class="item-title">Terminals Bar</p>
+          <p class="item-subtitle">Quick terminal switcher bar.</p>
+          {#if inputTerminalsBarEnabled}
+            <div class="mt-2 p-2 bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded text-sm text-yellow-800 dark:text-yellow-200">
+              ⚠️ Performance impact: Recommend using auto-hide mode instead of pin.
+            </div>
+          {/if}
+        </div>
+        <div class="flex gap-2 items-center">
+          <input
+            id="terminals-bar-enabled"
+            type="checkbox"
+            bind:checked={inputTerminalsBarEnabled}
+            on:change={() => updateSettings({ terminalsBarEnabled: inputTerminalsBarEnabled })}
+            class="checkbox"
+          />
+          <label for="terminals-bar-enabled" class="text-sm text-theme-fg">Enabled</label>
+        </div>
+      </div>
+
+      {#if inputTerminalsBarEnabled}
+        <div class="item">
+          <div>
+            <p class="item-title">Terminals Bar Position</p>
+            <p class="item-subtitle">
+              Where to position the terminals bar.
+              {#if inputTerminalsBarPosition === inputToolbarPosition}
+                <span class="text-theme-warning text-xs block mt-1">
+                  ⚠️ Will be offset to avoid collision with main toolbar
+                </span>
+              {/if}
+            </p>
+          </div>
+          <div class="relative">
+            <ChevronDownIcon
+              class="absolute top-[11px] right-2.5 w-4 h-4 text-theme-fg-muted"
+            />
+            <select
+              class="input-common !pr-5"
+              bind:value={inputTerminalsBarPosition}
+              on:change={() => updateSettings({ terminalsBarPosition: inputTerminalsBarPosition })}
+            >
+              <option value="top">Top</option>
+              <option value="bottom">Bottom</option>
+              <option value="left">Left</option>
+              <option value="right">Right</option>
+            </select>
+          </div>
+        </div>
+
+      {/if}
       
       <!-- Wallpaper Settings -->
       <div class="mt-6">
