@@ -52,7 +52,7 @@
   import { openRouterService } from "$lib/openrouter";
   import { markdownToAnsi } from "$lib/markdownToAnsi";
   import { contextManager } from "$lib/contextManager";
-  import { ExportManager, type ExportFormat, type ExportOptions } from "$lib/export";
+  import { ExportManager, type ExportFormat, type ExportOptions, type ExportResult } from "$lib/export";
   import ExportModal from "./ExportModal.svelte";
 
   /** Used to determine Cmd versus Ctrl keyboard shortcuts. */
@@ -77,6 +77,7 @@
   export let getThumbnail: () => Promise<string | null> = async () => null; // bound function prop
   export let getThumbnails: () => Promise<{small: string | null, large: string | null}> = async () => ({small: null, large: null}); // bound function prop
   export let getThumbnailForBar: () => Promise<string | null> = async () => null; // bound function prop for terminals bar
+  export let exportTerminal: (options: ExportOptions) => Promise<ExportResult> = async () => ({ content: '', filename: '', mimeType: 'text/plain' }); // bound function prop for session export
 
   export let termEl: HTMLDivElement = null as any; // suppress "missing prop" warning
   let term: Terminal | null = null;
@@ -866,6 +867,14 @@ ${fullContext}`;
     } else {
       exportManager = new ExportManager(term, exportTheme, terminalInfo);
     }
+
+    // Update the bound export function
+    exportTerminal = async (options: ExportOptions) => {
+      if (!exportManager) {
+        throw new Error('Export manager not initialized');
+      }
+      return await exportManager.export(options);
+    };
   }
 
   function handleWheelSkipXTerm(event: WheelEvent) {

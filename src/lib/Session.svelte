@@ -32,6 +32,7 @@
   import { arrangeNewTerminal, autoArrangeTerminals } from "./arrange";
   import { settings, type ToolbarPosition, updateSettings } from "./settings";
   import { wallpaperManager } from "./wallpaper";
+  import { SessionExportManager, type SessionTerminalInfo, type ExportOptions, type ExportResult } from "./export";
 
   export let id: string;
 
@@ -200,6 +201,7 @@
   const terminalBarThumbnails: Record<number, string | null> = {}; // Track terminal bar thumbnails (320×192)
   const thumbnailGetters: Record<number, () => Promise<{small: string | null, large: string | null}>> = {}; // Terminal thumbnail getter functions
   const terminalBarThumbnailGetters: Record<number, () => Promise<string | null>> = {}; // Terminal bar thumbnail getter functions
+  const terminalExporters: Record<number, (options: ExportOptions) => Promise<ExportResult>> = {}; // Terminal export functions for session export
   const terminalActivity: Record<number, number> = {}; // Track last activity timestamp for each terminal
   const terminalThumbnailHashes: Record<number, string> = {}; // Track content hashes to detect changes
   const terminalUpdateTimeouts: Record<number, number> = {}; // Track pending thumbnail updates
@@ -892,6 +894,63 @@
     // No periodic timer needed
     terminalsBarUpdateInterval = null;
   }
+
+  // Session export functionality - direct download all formats
+  async function handleSessionExport() {
+    console.log('Session export button clicked - starting direct export');
+    console.log('- shells:', shells.length);
+    console.log('- connected:', connected);
+    
+    if (shells.length === 0) {
+      makeToast({
+        kind: "error",
+        message: "No terminals to export",
+      });
+      return;
+    }
+    
+    try {
+      // Create session export manager
+      const sessionTerminals: SessionTerminalInfo[] = shells.map(([id, winsize]) => ({
+        id,
+        title: terminalTitles[id] || `Terminal ${id}`,
+        exportFunction: terminalExporters[id] || (() => Promise.resolve({
+          content: 'Export function not available',
+          filename: `terminal-${id}-error.txt`,
+          mimeType: 'text/plain'
+        }))
+      }));
+
+      console.log('Created session terminals:', sessionTerminals.length);
+      
+      const sessionExportManager = new SessionExportManager(sessionTerminals);
+      
+      // Export all formats as ZIP
+      const options: ExportOptions = {
+        format: 'zip',
+        selectionOnly: false,
+        includeTimestamp: true,
+        optimizeForVSCode: true,
+        title: `Session Export - ${shells.length} terminals`
+      };
+      
+      console.log('Starting session export with options:', options);
+      const result = await sessionExportManager.exportSession(options);
+      sessionExportManager.downloadExport(result);
+      
+      makeToast({
+        kind: "success",
+        message: `Session exported successfully (${shells.length} terminals)`,
+      });
+    } catch (error) {
+      console.error('Session export failed:', error);
+      makeToast({
+        kind: "error",
+        message: `Session export failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      });
+    }
+  }
+
 </script>
 
 <!-- Wheel handler stops native macOS Chrome zooming on pinch. -->
@@ -949,6 +1008,7 @@
           await captureTerminalThumbnails();
           showTerminalSelector = true;
         }}
+        on:sessionExport={handleSessionExport}
       />
     </div>
 
@@ -976,6 +1036,7 @@
         />
       </div>
     {/if}
+    
   </div>
 
   <!-- Invisible hover zones for showing the toolbar based on position -->
@@ -1104,6 +1165,7 @@
           bind:write={writers[id]}
           bind:getThumbnails={thumbnailGetters[id]}
           bind:getThumbnailForBar={terminalBarThumbnailGetters[id]}
+          bind:exportTerminal={terminalExporters[id]}
           bind:termEl={termElements[id]}
           on:data={({ detail: data }) =>
             hasWriteAccess && handleInput(id, data)}

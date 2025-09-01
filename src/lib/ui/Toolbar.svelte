@@ -14,6 +14,7 @@
     ZoomOutIcon,
     GridIcon,
     LayersIcon,
+    DownloadIcon,
   } from "svelte-feather-icons";
 
   import logo from "$lib/assets/logo.svg";
@@ -37,6 +38,7 @@
     zoomReset: void;
     autoArrange: void;
     terminalSelector: void;
+    sessionExport: void;
   }>();
 
   $: zoomPercent = Math.round(zoomLevel * 100);
@@ -86,6 +88,17 @@
           title="Auto-arrange terminals"
         >
           <GridIcon strokeWidth={1.5} size="18" />
+        </button>
+        <button
+          class="toolbar-button"
+          on:click={() => {
+            console.log('Toolbar session export button clicked');
+            dispatch("sessionExport");
+          }}
+          disabled={!connected}
+          title="Download session data (all terminals, all formats)"
+        >
+          <DownloadIcon strokeWidth={1.5} size="18" />
         </button>
       </div>
       
