@@ -31,7 +31,6 @@ const (
 	Reset         = "\033[0m"
 )
 
-
 func main() {
 	// Get default values from environment variables - matches Rust implementation
 	defaultServer := os.Getenv("SSHX_SERVER")
@@ -315,9 +314,6 @@ func registerWithDashboard(server string, controller interface {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Debug: print the request being sent
-	log.Printf("Debug: Dashboard registration request: %s", string(jsonData))
-
 	// Make HTTP POST request
 	resp, err := http.Post(dashboardURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -330,7 +326,6 @@ func registerWithDashboard(server string, controller interface {
 		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 			return nil, fmt.Errorf("failed to decode response: %w", err)
 		}
-		log.Printf("Debug: Dashboard registration response: %+v", response)
 		fmt.Println("\n  ✓ Session registered to dashboard")
 
 		return &DashboardInfo{
