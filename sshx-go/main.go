@@ -31,6 +31,7 @@ const (
 	Reset         = "\033[0m"
 )
 
+
 func main() {
 	// Get default values from environment variables - matches Rust implementation
 	defaultServer := os.Getenv("SSHX_SERVER")
@@ -47,9 +48,8 @@ func main() {
 		name          = flag.String("name", "", "Session name displayed in the title (defaults to user@hostname)")
 		enableReaders = flag.Bool("enable-readers", false, "Enable read-only access mode - generates separate URLs for viewers and editors")
 		serviceCmd    = flag.String("service", "", "Service management (install|uninstall|status|start|stop)")
-		dashboard     = flag.Bool("dashboard", false, "Register with a new dashboard")
-		dashboardKey  = flag.String("dashboard-key", "", "Join existing dashboard with specified key")
 		verbose       = flag.Bool("verbose", defaultVerbose, "Enable verbose output showing connection details and fallback attempts")
+		dashboard     = flag.String("dashboard", "", "Register with dashboard. Optional KEY to join existing dashboard (use empty string for new dashboard)")
 	)
 
 	flag.Usage = func() {
@@ -78,7 +78,7 @@ Usage:
 
 	flag.Parse()
 
-	if err := runSshx(*server, *shell, *quiet, *name, *enableReaders, *serviceCmd, *dashboard, *dashboardKey, *verbose); err != nil {
+	if err := runSshx(*server, *shell, *quiet, *name, *enableReaders, *serviceCmd, *dashboard, *verbose); err != nil {
 		// Provide user-friendly error messages - matches Rust implementation
 		errorMsg := err.Error()
 		if strings.Contains(errorMsg, "Both gRPC and WebSocket connections failed") {
@@ -102,13 +102,13 @@ Usage:
 	}
 }
 
-func runSshx(server, shell string, quiet bool, name string, enableReaders bool, serviceCmd string, dashboard bool, dashboardKey string, verbose bool) error {
+func runSshx(server, shell string, quiet bool, name string, enableReaders bool, serviceCmd string, dashboard string, verbose bool) error {
 	// Initialize logger with verbose mode
 	util.InitLogger(verbose)
 
 	// Handle service commands if present
 	if serviceCmd != "" {
-		return handleServiceCommand(serviceCmd, server, dashboard || dashboardKey != "", enableReaders, name, shell)
+		return handleServiceCommand(serviceCmd, server, dashboard != "", enableReaders, name, shell)
 	}
 
 	// Get shell command
@@ -158,14 +158,10 @@ func runSshx(server, shell string, quiet bool, name string, enableReaders bool, 
 
 	// Register with dashboard if requested
 	var dashboardInfo *DashboardInfo
-	if dashboard || dashboardKey != "" {
-		var key *string
-		if dashboardKey != "" {
-			// Join existing dashboard
-			key = &dashboardKey
-		}
-		// else key is nil, which creates a new dashboard
-		if info, err := registerWithDashboard(server, controller, sessionName, key); err != nil {
+	if dashboard != "" {
+		// Use provided dashboard key
+		var dashboardKey *string = &dashboard
+		if info, err := registerWithDashboard(server, controller, sessionName, dashboardKey); err != nil {
 			log.Printf("Dashboard registration failed: %v", err)
 		} else {
 			dashboardInfo = info
@@ -319,6 +315,9 @@ func registerWithDashboard(server string, controller interface {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	// Debug: print the request being sent
+	log.Printf("Debug: Dashboard registration request: %s", string(jsonData))
+
 	// Make HTTP POST request
 	resp, err := http.Post(dashboardURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -331,6 +330,7 @@ func registerWithDashboard(server string, controller interface {
 		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 			return nil, fmt.Errorf("failed to decode response: %w", err)
 		}
+		log.Printf("Debug: Dashboard registration response: %+v", response)
 		fmt.Println("\n  ✓ Session registered to dashboard")
 
 		return &DashboardInfo{
