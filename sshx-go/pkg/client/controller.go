@@ -213,6 +213,21 @@ func (c *Controller) tryChannel() error {
 		c.transport = newTransport
 	}
 
+	// For gRPC connections, also recreate the transport on reconnection attempts
+	// to prevent using stale connections that may have timed out
+	if c.connectionMethod == transport.MethodGrpc {
+		// Cleanup old transport
+		c.transport.Cleanup()
+
+		// Reconnect using gRPC
+		util.DebugLog("Reconnecting via gRPC (remembered preference): %s", c.config.Origin)
+		newTransport, err := transport.ConnectGrpc(c.config.Origin)
+		if err != nil {
+			return fmt.Errorf("failed to reconnect via gRPC: %w", err)
+		}
+		c.transport = newTransport
+	}
+
 	// Get bidirectional channels from transport
 	serverUpdates, clientUpdates, err := c.transport.Channel(c.ctx)
 	if err != nil {
