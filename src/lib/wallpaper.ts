@@ -39,22 +39,6 @@ export const BUILTIN_WALLPAPERS: Wallpaper[] = [
     builtIn: true,
   },
   {
-    id: "ubuntu-purple",
-    name: "Ubuntu Purple",
-    type: "builtin", 
-    url: "/wallpapers/ubuntu-purple.svg",
-    thumbnail: "/wallpapers/thumbs/ubuntu-purple.svg",
-    builtIn: true,
-  },
-  {
-    id: "ubuntu-dark",
-    name: "Ubuntu Dark",
-    type: "builtin",
-    url: "/wallpapers/ubuntu-dark.svg",
-    thumbnail: "/wallpapers/thumbs/ubuntu-dark.svg",
-    builtIn: true,
-  },
-  {
     id: "ubuntu-sunrise",
     name: "Ubuntu Sunrise",
     type: "builtin",
@@ -78,72 +62,12 @@ export const BUILTIN_WALLPAPERS: Wallpaper[] = [
     thumbnail: "/wallpapers/thumbs/ubuntu-minimal.svg",
     builtIn: true,
   },
-  
-  // Ubuntu Default Style Variations
-  {
-    id: "ubuntu-default-dracula",
-    name: "Ubuntu Dracula",
-    type: "builtin",
-    url: "/wallpapers/ubuntu-default-dracula.svg",
-    thumbnail: "/wallpapers/thumbs/ubuntu-default-dracula.svg",
-    builtIn: true,
-  },
-  {
-    id: "ubuntu-default-nord",
-    name: "Ubuntu Nord",
-    type: "builtin",
-    url: "/wallpapers/ubuntu-default-nord.svg",
-    thumbnail: "/wallpapers/thumbs/ubuntu-default-nord.svg",
-    builtIn: true,
-  },
-  {
-    id: "ubuntu-default-solarized-light",
-    name: "Ubuntu Solarized Light",
-    type: "builtin",
-    url: "/wallpapers/ubuntu-default-solarized-light.svg",
-    thumbnail: "/wallpapers/thumbs/ubuntu-default-solarized-light.svg",
-    builtIn: true,
-  },
-  {
-    id: "ubuntu-default-tokyo-night",
-    name: "Ubuntu Tokyo Night",
-    type: "builtin",
-    url: "/wallpapers/ubuntu-default-tokyo-night.svg",
-    thumbnail: "/wallpapers/thumbs/ubuntu-default-tokyo-night.svg",
-    builtIn: true,
-  },
-  {
-    id: "ubuntu-default-gruvbox",
-    name: "Ubuntu Gruvbox",
-    type: "builtin",
-    url: "/wallpapers/ubuntu-default-gruvbox.svg",
-    thumbnail: "/wallpapers/thumbs/ubuntu-default-gruvbox.svg",
-    builtIn: true,
-  },
-  
-  // Ubuntu Dark Style Variations
-  {
-    id: "ubuntu-dark-catppuccin",
-    name: "Ubuntu Catppuccin",
-    type: "builtin",
-    url: "/wallpapers/ubuntu-dark-catppuccin.svg",
-    thumbnail: "/wallpapers/thumbs/ubuntu-dark-catppuccin.svg",
-    builtIn: true,
-  },
   {
     id: "ubuntu-dark-onedark",
     name: "Ubuntu One Dark",
     type: "builtin",
     url: "/wallpapers/ubuntu-dark-onedark.svg",
     thumbnail: "/wallpapers/thumbs/ubuntu-dark-onedark.svg",
-    builtIn: true,
-  },
-  {
-    id: "ubuntu-dark-monokai",
-    name: "Ubuntu Monokai",
-    type: "builtin",
-    url: "/wallpapers/ubuntu-dark-monokai.svg",
-    thumbnail: "/wallpapers/thumbs/ubuntu-dark-monokai.svg",
     builtIn: true,
   },
   {
@@ -161,41 +85,7 @@ export const BUILTIN_WALLPAPERS: Wallpaper[] = [
     url: "/wallpapers/ubuntu-dark-palenight.svg",
     thumbnail: "/wallpapers/thumbs/ubuntu-dark-palenight.svg",
     builtIn: true,
-  },
-  
-  // Ubuntu Minimal Style Variations
-  {
-    id: "ubuntu-minimal-everforest",
-    name: "Ubuntu Everforest",
-    type: "builtin",
-    url: "/wallpapers/ubuntu-minimal-everforest.svg",
-    thumbnail: "/wallpapers/thumbs/ubuntu-minimal-everforest.svg",
-    builtIn: true,
-  },
-  {
-    id: "ubuntu-minimal-rosepine",
-    name: "Ubuntu Rosé Pine",
-    type: "builtin",
-    url: "/wallpapers/ubuntu-minimal-rosepine.svg",
-    thumbnail: "/wallpapers/thumbs/ubuntu-minimal-rosepine.svg",
-    builtIn: true,
-  },
-  {
-    id: "ubuntu-minimal-github-dark",
-    name: "Ubuntu GitHub Dark",
-    type: "builtin",
-    url: "/wallpapers/ubuntu-minimal-github-dark.svg",
-    thumbnail: "/wallpapers/thumbs/ubuntu-minimal-github-dark.svg",
-    builtIn: true,
-  },
-  {
-    id: "ubuntu-minimal-horizon",
-    name: "Ubuntu Horizon",
-    type: "builtin",
-    url: "/wallpapers/ubuntu-minimal-horizon.svg",
-    thumbnail: "/wallpapers/thumbs/ubuntu-minimal-horizon.svg",
-    builtIn: true,
-  },
+  }
 ];
 
 const WALLPAPER_STORAGE_KEY = "sshx-wallpapers";
