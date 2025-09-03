@@ -135,7 +135,7 @@ export const settings: Readable<Settings> = derived(
 
     let fontWeightBold = $storedSettings.fontWeightBold;
     if (typeof fontWeightBold !== "number" || fontWeightBold < 100 || fontWeightBold > 900) {
-      fontWeightBold = 700;
+      fontWeightBold = 500;
     }
 
     let toolbarPosition = $storedSettings.toolbarPosition;
